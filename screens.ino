@@ -63,7 +63,7 @@ void openClock() { clockOpen = true; }
 #define TEMP_PILL_W 80
 #define TEMP_PILL_Y 155
 #define TEMP_PILL_H 28
-static const char *const LANG_CODES[LANG_COUNT] = { "EN", "ZH" };
+static const char *const LANG_CODES[LANG_COUNT] = { "EN", "ZH", "한국어" };
 
 // Boton de brillo: un sol y tres barras, encendidas las del nivel de ahora.
 // Sin texto a proposito: cabe en poco sitio y se entiende en los dos idiomas.
@@ -132,7 +132,7 @@ void renderClock() {
   }
 
   // sonido, wi-fi (verde si ya hay red), idioma, restaurar la copia (su fecha debajo)
-  char lp[10];
+  char lp[24];  // UTF-8: "한국어 >" needs more than ten bytes.
   snprintf(lp, sizeof(lp), "%s >", LANG_CODES[gLang]);
   uint32_t bk = 0;
   bool hayCopia = backupInfo(bk);
@@ -333,7 +333,7 @@ void drawCelebration() {
   const char *l1 = nullptr, *l2 = nullptr;
   // 32 y no 20: "%u にちれんぞく！" ya pasa de 20 con una sola cifra, y snprintf
   // cortaba a mitad de un caracter de 3 bytes.
-  char buf[32];
+  char buf[64];
   char reg[40];
   if (timeLeft(unlockUntil) && unlockShow < REGION_COUNT) {  // region nueva
     l1 = T(S_REGION_UNLOCK);
@@ -533,7 +533,7 @@ void renderCardProgress() {
   gfx->setTextColor(UI_HINT);
   setCur(centerX(T(S_EVO_LABEL), 2), 230);
   printT(T(S_EVO_LABEL));
-  char evoBuf[32];
+  char evoBuf[64];
   const char *evo;
   uint16_t evoCol = UI_INK;
   if (d.evolvesTo == 0) {

@@ -21,6 +21,8 @@ static bool gyNewBadge = false;
 static uint32_t gyEndAt = 0;
 static bool gyPractice = false;         // consola GYM: sin gastar el intento ni ganar nada
 
+// Gym-person, city and badge proper names currently have EN/ZH source data.
+// Korean uses their English spelling; all gym controls use translated T() text.
 static const char *gtx(const char *en, const char *zh) { return gLang == LANG_ZH ? zh : en; }
 
 static const GymPerson &foe() { return gyLeague ? LEAGUE[gyRegion][lgMember] : GYMS[gyRegion][gySel].leader; }

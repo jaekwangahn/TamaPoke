@@ -4,6 +4,7 @@
   python3 test/test_tools.py
 """
 import os
+import json
 import re
 import shutil
 import subprocess
@@ -14,6 +15,22 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, 'tools')
 sys.path.insert(0, TOOLS)
+
+
+def korean_species_names():
+    """Read only indexed species entries, excluding comments and header metadata."""
+    with open(os.path.join(ROOT, 'dex_names_ko.h'), encoding='utf-8') as fh:
+        source = fh.read()
+    entries = re.findall(r'^\s*("(?:[^"\\]|\\.)*"),\s*//\s*(\d+)\s*$',
+                         source, re.M)
+    return {int(number): json.loads(literal) for literal, number in entries}
+
+
+def without_cpp_comments(source):
+    """Remove comments while preserving strings (including URLs) and line numbers."""
+    tokens = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|//[^\n]*|/\*.*?\*/', re.S)
+    return tokens.sub(lambda m: m.group(0) if m.group(0)[0] in ('"', "'")
+                      else re.sub(r'[^\n]', ' ', m.group(0)), source)
 
 
 class TestToolsCompile(unittest.TestCase):
@@ -129,6 +146,18 @@ class TestDexData(unittest.TestCase):
                 self.assertTrue(name, f'{num} {lang} vacio')
                 self.assertLessEqual(len(name), 8, f'{num} {lang} no cabe en pantalla: {name}')
 
+    def test_todas_las_especies_tienen_nombre_coreano(self):
+        names = korean_species_names()
+        self.assertEqual(sorted(names), list(range(1, 1026)))
+        self.assertEqual(names[1], '이상해씨')
+        self.assertEqual(names[25], '피카츄')
+        self.assertEqual(names[1025], '복숭악동')
+        for number, name in names.items():
+            with self.subTest(especie=number):
+                self.assertTrue(name.strip())
+                self.assertRegex(name, r'[가-힣]')
+                self.assertLessEqual(len(name.encode('utf-8')), 18)
+
 
 class TestGeneratedFiles(unittest.TestCase):
     """dex.h esta generado: si no coincide con su generador, alguien lo edito a mano."""
@@ -150,10 +179,11 @@ class TestGeneratedFiles(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_los_ficheros_generados_avisan_de_que_lo_son(self):
-        for name in ('dex.h', 'species.h', 'zhfont.h'):
+        for name in ('dex.h', 'species.h', 'zhfont.h', 'dex_names_ko.h', 'kofont.h'):
             with open(os.path.join(ROOT, name)) as fh:
                 head = fh.read(400)
-            self.assertIn('GENERADO', head, f'{name} deberia decir que esta generado')
+            self.assertRegex(head, r'GENERADO|GENERATED',
+                             f'{name} deberia decir que esta generado')
 
 
 class TestSketchSanity(unittest.TestCase):
@@ -182,15 +212,23 @@ class TestSketchSanity(unittest.TestCase):
                     with self.subTest(fichero=nombre, linea=lineno):
                         self.assertIsNone(patron.search(code), f'{nombre}:{lineno}: {code.strip()}')
 
-    def test_el_sketch_no_lleva_caracteres_no_ascii_en_literales_de_pantalla(self):
-        # los comentarios pueden llevar lo que quieran; los literales, no:
-        # la fuente GFX es ASCII y un acento sale como basura
+    def test_literales_cjk_del_sketch_tienen_fuente_y_ruta_utf8(self):
+        # CJK literals are allowed only on paths rendered with a Unicode font.
+        # The remaining literals still use the classic single-byte font.
+        with open(os.path.join(TOOLS, 'ko_font_chars.txt'), encoding='utf-8') as fh:
+            covered = set(fh.read().strip())
+        unicode_sources = {'screens.ino', 'pet_anim.ino'}
         for nombre, texto in self.ino.items():
-            for lineno, line in enumerate(texto.splitlines(), 1):
-                code = line.split('//')[0]
-                for chunk in code.split('"')[1::2]:
-                    self.assertTrue(chunk.isascii(),
-                                    f'{nombre}:{lineno}: literal no ASCII: {chunk!r}')
+            for lineno, line in enumerate(without_cpp_comments(texto).splitlines(), 1):
+                for literal in re.findall(r'"(?:[^"\\]|\\.)*"', line):
+                    needed = {char for char in literal if not char.isascii()}
+                    if not needed:
+                        continue
+                    with self.subTest(fichero=nombre, linea=lineno):
+                        self.assertIn(nombre, unicode_sources,
+                                      f'{nombre}:{lineno}: literal UTF-8 sin ruta CJK: {literal}')
+                        self.assertFalse(needed - covered,
+                                         f'{nombre}:{lineno}: glifos no cubiertos: {needed - covered}')
 
     def test_las_llaves_estan_equilibradas(self):
         for nombre, texto in self.ino.items():
@@ -233,6 +271,25 @@ class TestChinoEnLaFuente(unittest.TestCase):
         self.assertIsNone(m.decode_font(fuente, 0x4E00))
 
 
+class TestCoreanoEnLaFuente(unittest.TestCase):
+    """Translations, full species names, and direct UI literals have Korean glyphs."""
+
+    def test_textos_y_nombres_coreanos_estan_en_la_fuente(self):
+        import make_ko_font
+
+        with open(os.path.join(TOOLS, 'ko_font_chars.txt'), encoding='utf-8') as fh:
+            covered = set(fh.read().strip())
+        used = {chr(code) for code in make_ko_font.used_chars()}
+        self.assertTrue(used)
+        self.assertFalse(used - covered,
+                         'Regenera tools/make_ko_font.py: ' + ''.join(sorted(used - covered)))
+        self.assertTrue(set('한국어첨벙') <= covered)
+        names = korean_species_names()
+        # ASCII is included unconditionally by the generator, outside this manifest.
+        name_glyphs = {char for char in ''.join(names.values()) if ord(char) > 126}
+        self.assertFalse(name_glyphs - covered)
+
+
 class TestBuffersDeTexto(unittest.TestCase):
     """Cada snprintf(buf, sizeof(buf), T(S_x), ...) cabe en su buffer en TODOS los idiomas.
 
@@ -265,8 +322,8 @@ class TestBuffersDeTexto(unittest.TestCase):
         'S_ALSO_GOT_FMT': ('objeto',),
         'S_GOOD_AT_FMT': ('prueba', 'prueba'),  # las dos pruebas del torneo en que destaca
     }
-    CIFRAS = {'u': 5, 'd': 5, 'lu': 10}
-    ESPEC = re.compile(r'%0?\d*(lu|u|d|s)')
+    CIFRAS = {'u': 5, 'd': 5, 'lu': 10, 'ld': 11}
+    ESPEC = re.compile(r'%0?\d*(lu|ld|u|d|s)')
 
     @classmethod
     def setUpClass(cls):
@@ -303,7 +360,8 @@ class TestBuffersDeTexto(unittest.TestCase):
         base = max(len(row[2].encode()) for row in DEX)
         cls.NOMBRE = {}
         for lang in cls.LANGS:
-            propios = [n[lang.lower()] for n in LOCAL_NAMES.values() if lang.lower() in n]
+            propios = (list(korean_species_names().values()) if lang == 'KO'
+                       else [n[lang.lower()] for n in LOCAL_NAMES.values() if lang.lower() in n])
             cls.NOMBRE[lang] = max([base] + [len(n.encode('utf-8')) for n in propios])
 
     @staticmethod

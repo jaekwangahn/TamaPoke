@@ -4,11 +4,12 @@
 #include "shim/Preferences.h"
 #include "../i18n.h"
 #include "../pet.h"  // MED_COUNT
+#include "../dex.h"  // Korean names must be selected by the active language.
 #include <ctype.h>
 #include <string.h>
 #include <vector>
 
-static const char *LANG_NAME[LANG_COUNT] = { "EN", "ZH" };
+static const char *LANG_NAME[LANG_COUNT] = { "EN", "ZH", "KO" };
 
 // extrae la firma de los especificadores de printf de una cadena: "%lud" -> "lu"
 static std::vector<std::string> specs(const char *s) {
@@ -231,6 +232,43 @@ TEST(i18n, el_idioma_se_guarda_y_se_recupera) {
   gLang = LANG_ZH;
   loadLang();
   CHECK_EQ((int)gLang, (int)LANG_EN);
+  gLang = LANG_DEFAULT;
+}
+
+TEST(i18n, coreano_se_guarda_sin_reinterpretar_ingles_ni_chino) {
+  CHECK_EQ((int)LANG_EN, 0);
+  CHECK_EQ((int)LANG_ZH, 1);
+  CHECK_EQ((int)LANG_KO, 2);
+  const Lang languages[] = { LANG_EN, LANG_ZH, LANG_KO };
+  const char *settings[] = { "SETTINGS", "设置", "설정" };
+  for (uint8_t stored = 0; stored < 3; stored++) {
+    mockNvsReset();
+    Preferences p;
+    p.begin("tamapoke", false);
+    p.putUChar("lang2", stored);  // includes existing EN=0 and ZH=1 saves
+    p.end();
+    gLang = LANG_KO;
+    loadLang();
+    CHECK_EQ((int)gLang, (int)languages[stored]);
+    CHECK_EQ(strcmp(T(S_SET_TIME), settings[stored]), 0);
+  }
+  setLang(LANG_KO);
+  gLang = LANG_EN;
+  loadLang();
+  CHECK_EQ((int)gLang, (int)LANG_KO);
+  CHECK_EQ(strcmp(T(S_LANG_LABEL), "언어"), 0);
+  gLang = LANG_DEFAULT;
+}
+
+TEST(i18n, coreano_muestra_nombres_de_las_1025_especies) {
+  gLang = LANG_KO;
+  CHECK_EQ(strcmp(dexName(1), "이상해씨"), 0);
+  CHECK_EQ(strcmp(dexName(25), "피카츄"), 0);
+  CHECK_EQ(strcmp(dexName(1025), "복숭악동"), 0);
+  for (int number = 1; number <= DEX_COUNT; number++) {
+    CHECK_MSG(dexName(number) && dexName(number)[0], "Korean species name missing");
+    CHECK_EQ(strcmp(dexName(number), DEX_NAME_KO[number]), 0);
+  }
   gLang = LANG_DEFAULT;
 }
 

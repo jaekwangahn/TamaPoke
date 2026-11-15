@@ -103,27 +103,58 @@ button{width:100%;padding:12px;font-size:17px}small{color:#666}</style></head><b
 <small>不改的项留空就行（会保留原来的）。要删掉某个 Wi-Fi（在它的名称里填）、chess.com 用户名或语音控制地址，填一个减号 -</small><br><br>
 <button>保存</button></form></body></html>)";
 
-// respuestas de /save, en el orden de Lang (EN, ZH)
+static const char PAGINA_KO[] PROGMEM = R"(<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TamaPoke Wi-Fi 설정</title>
+<style>body{font-family:sans-serif;max-width:420px;margin:24px auto;padding:0 16px}
+input{width:100%;padding:10px;margin:6px 0 14px;font-size:16px;box-sizing:border-box}
+button{width:100%;padding:12px;font-size:17px}small{color:#666}</style></head><body>
+<h2>TamaPoke Wi-Fi</h2><p>Wi-Fi에 연결하면 매일 밤 chess.com 포인트를 동기화하고 날씨를 갱신합니다.</p>
+<form method="post" action="/save"><p><b>Wi-Fi 1</b>{1}</p>
+<label>네트워크 이름</label><input name="ssid"><label>비밀번호</label><input name="pass" type="password">
+<p><b>Wi-Fi 2</b> (선택){2}</p>
+<label>네트워크 이름</label><input name="ssid2"><label>비밀번호</label><input name="pass2" type="password">
+<p><b>Wi-Fi 3</b> (선택){3}</p>
+<label>네트워크 이름</label><input name="ssid3"><label>비밀번호</label><input name="pass3" type="password">
+<small>집, 학교, 휴대폰 핫스팟 등 최대 3개를 저장할 수 있습니다. 보드는 감지된 네트워크 중 신호가 가장 강한 곳에 연결합니다.
+2.4GHz만 지원합니다. iPhone 핫스팟은 '호환성 최대화'를 켜세요.</small><br><br>
+<label>chess.com 사용자 이름 (선택)</label>
+<input name="chess" maxlength="25" autocapitalize="none" autocorrect="off" spellcheck="false">
+<small>chess.com 대국으로 포인트를 얻습니다. 첫 동기화와 사용자 이름 변경 후 첫 동기화는 현재 기록만 저장하며,
+이전에 끝난 대국의 포인트는 지급하지 않습니다.</small><br><br>
+<label>Stack-chan 음성 제어 (선택)</label>
+<input name="mcp" placeholder="wss://api.xiaozhi.me/mcp/?token=...">
+<small>Stack-chan 또는 xiaozhi 음성 기기를 사용하는 경우에만 앱의 MCP 연결 주소를 붙여 넣으세요.
+사용하지 않으면 비워 두세요.</small><br><br>
+<small>입력란을 비워 두면 저장된 값이 유지됩니다. Wi-Fi 네트워크를 지우려면 해당 이름에 -를 입력하세요.
+chess.com 사용자 이름과 음성 제어 주소도 -를 입력하면 삭제됩니다.</small><br><br>
+<button>저장</button></form></body></html>)";
+
+// respuestas de /save, en el orden de Lang (EN, ZH, KO)
 static const char *const MSG_CHESS[LANG_COUNT] = {
   "<meta charset=utf-8><p>A chess.com username has only letters, numbers, _ and - (3 to 25 of them). "
   "Please go back and fix it.</p>",
   "<meta charset=utf-8><p>chess.com 用户名只能有字母、数字、_ 和 -（3 到 25 个），请返回重填。</p>",
+  "<meta charset=utf-8><p>chess.com 사용자 이름은 영문, 숫자, _ 또는 -로 된 3~25자여야 합니다. 뒤로 가서 수정해 주세요.</p>",
 };
 static const char *const MSG_BAD[LANG_COUNT] = {
   "<meta charset=utf-8><p>Something isn't right. Please go back and try again.</p>",
   "<meta charset=utf-8><p>填的不对，请返回重填。</p>",
+  "<meta charset=utf-8><p>입력값을 확인한 뒤 다시 저장해 주세요.</p>",
 };
 static const char *const MSG_SAVED[LANG_COUNT] = {
   "<meta charset=utf-8><h2>Saved</h2><p>You can leave this hotspot now.</p>",
   "<meta charset=utf-8><h2>已保存</h2><p>可以断开这个热点了。</p>",
+  "<meta charset=utf-8><h2>저장 완료</h2><p>이제 TamaPoke 핫스팟 연결을 해제해도 됩니다.</p>",
 };
 
 // la pagina con cada red marcada si ya hay una guardada (sin decir cual)
 static void paginaPortal() {
-  String page(gLang == LANG_ZH ? PAGINA_ZH : PAGINA_EN);
+  static const char *const PAGES[LANG_COUNT] = { PAGINA_EN, PAGINA_ZH, PAGINA_KO };
+  static const char *const SAVED[LANG_COUNT] = { " - saved", "（已保存）", " (저장됨)" };
+  String page(PAGES[gLang]);
   for (uint8_t i = 0; i < WIFI_SLOTS; i++) {
     char marca[4] = { '{', (char)('1' + i), '}', 0 };
-    page.replace(marca, credGet(KEY_SSID[i]).length() ? (gLang == LANG_ZH ? "（已保存）" : " - saved") : "");
+    page.replace(marca, credGet(KEY_SSID[i]).length() ? SAVED[gLang] : "");
   }
   server->send(200, "text/html; charset=utf-8", page);
 }

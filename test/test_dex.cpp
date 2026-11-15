@@ -34,10 +34,11 @@ TEST(dex, todas_las_especies_tienen_nombre_chino) {
     CHECK_MSG(DEX_NAME_ZH[d] && DEX_NAME_ZH[d][0], std::string("sin nombre chino: ") + DEX_TBL[d].name);
 }
 
-// la cabecera de la ficha es char[26] con "%s%s Lv.%u": ningun nombre en ningun
+// The profile/main header uses char[48]; include full UTF-8 Korean names.
+// Ningun nombre en ningun
 // idioma puede desbordarla (el nombre se cortaria en pantalla)
 TEST(dex, ningun_nombre_desborda_la_cabecera) {
-  char head[26];
+  char head[48];
   for (int lang = 0; lang < LANG_COUNT; lang++) {
     gLang = (Lang)lang;
     for (int d = 1; d <= N; d++) {

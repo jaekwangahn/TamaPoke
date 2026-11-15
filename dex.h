@@ -7,6 +7,9 @@
 #define DEX_COUNT 1025
 #define DEX_BITMAP_BYTES 129  // pokedex en bits (dexReg)
 
+#include "dex_names_ko.h"
+static_assert(DEX_NAME_KO_COUNT == DEX_COUNT, "Korean species names must cover the full Dex");
+
 // rareza: 0 = solo por evolucion, 1 = comun, 2 = raro, 3 = legendario,
 // 4 = no disponible (sin sprite animado: ni huevo ni evolucion)
 enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO, R_NONE };
@@ -1316,7 +1319,8 @@ static const char *const DEX_NAME_ZH[DEX_COUNT + 1] = {
 // idioma no tiene nombre propio para ella).
 static inline const char *dexName(int16_t dex) {
   if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;
-  const char *n = (gLang == LANG_ZH) ? DEX_NAME_ZH[dex] : nullptr;
+  const char *n = (gLang == LANG_KO) ? DEX_NAME_KO[dex]
+                  : (gLang == LANG_ZH) ? DEX_NAME_ZH[dex] : nullptr;
   return n ? n : DEX_TBL[dex].name;
 }
 

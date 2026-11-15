@@ -629,7 +629,7 @@ const char *eggMsg() {
 const char *statusMsg() {
   if (pet.questAway()) return T(S_AWAY);  // de expedicion (fun.ino)
   if (pet.evolving()) return T(S_EVOLVING);
-  if (bathUntil) return "Splish splash!";  // onomatopeya universal
+  if (bathUntil) return gLang == LANG_KO ? "첨벙첨벙!" : "Splish splash!";
   if (pet.sleeping) return "Zzz...";
   if (pet.eating()) return T(S_EATING);
   if (pet.showHeart()) return T(S_LIKES);

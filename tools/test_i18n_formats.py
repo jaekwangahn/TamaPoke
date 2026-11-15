@@ -35,7 +35,7 @@ import sys
 HERE = os.path.dirname(__file__)
 I18N_CPP = os.path.join(HERE, '..', 'i18n.cpp')
 
-LANGS = ['EN', 'ZH']
+LANGS = ['EN', 'ZH', 'KO']
 STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
 SPEC_RE = re.compile(
     r'%[-+ #0]*[\d.]*(?:l|h|ll|hh)?[diouxXeEfFgGaAcspn%]')

@@ -47,7 +47,7 @@ void setSize(uint8_t n) {
       if (err < mejorErr) { mejorErr = err; chica = (alto == 12); escala = k; }
     }
   }
-  gfx->setFont(chica ? CJK_FONT_ZH_S : CJK_FONT_ZH);
+  gfx->setFont(chica ? gFont12 : gFont16);
   gFontAscent = chica ? gAsc12 : gAsc16;
   // gTextSize guarda la escala REALMENTE aplicada: setCur() multiplica el
   // ascenso por ella y tiene que cuadrar con lo que se pinta
@@ -75,13 +75,15 @@ void applyLangFont() {
     return;
   }
   gfx->setUTF8Print(true);     // las cadenas CJK son UTF-8 multibyte
+  gFont16 = gLang == LANG_KO ? CJK_FONT_KO : CJK_FONT_ZH;
+  gFont12 = gLang == LANG_KO ? CJK_FONT_KO_S : CJK_FONT_ZH_S;
   int16_t x1, y1;
   uint16_t w, h;
   gfx->setTextSize(1);
-  gfx->setFont(CJK_FONT_ZH_S);
+  gfx->setFont(gFont12);
   gfx->getTextBounds("A", 0, 0, &x1, &y1, &w, &h);
   gAsc12 = -y1;                // y1 negativo: subir desde la linea base
-  gfx->setFont(CJK_FONT_ZH);
+  gfx->setFont(gFont16);
   gfx->getTextBounds("A", 0, 0, &x1, &y1, &w, &h);
   gAsc16 = -y1;
   setSize(gReqSize);           // vuelve a la fuente y escala del tamano activo

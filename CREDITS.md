@@ -40,3 +40,10 @@ Huge thanks to that whole community for an enormous amount of work.
 | Step detection (`steps.h`) | adapted from `imu.cpp` in [ShadowEnemyx/TamaPoke](https://github.com/ShadowEnemyx/TamaPoke/tree/tamapoke-expanded-update) (MIT) |
 
 TamaPoke's own code (firmware and tools) is original work.
+
+## Korean localization
+
+- Official Korean Pokémon names: PokéAPI CSV data, pinned in `tools/gen_names_ko.py`.
+- Korean bitmap font subsets: Noto Sans KR from Google Fonts, SIL Open Font
+  License 1.1. The full license is in `docs/fonts/NotoSansKR-OFL.txt`; source
+  revision and font checksum are pinned in `tools/make_ko_font.py`.

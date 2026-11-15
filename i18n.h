@@ -1,12 +1,12 @@
 #pragma once
 #include <Arduino.h>
 
-// Idiomas soportados: ingles y chino. El ingles usa la fuente 5x7 de Arduino_GFX
+// Languages: English, Simplified Chinese, Korean. English uses Arduino_GFX 5x7
 // (tabla CP437, un byte por caracter: la UI centra con strlen(t)*6, asi que nada
-// de UTF-8 ahi). El chino va en UTF-8 con una fuente U8g2.
-enum Lang : uint8_t { LANG_EN = 0, LANG_ZH, LANG_COUNT };
+// de UTF-8 ahi). Chinese and Korean use UTF-8 with compact U8g2 fonts.
+enum Lang : uint8_t { LANG_EN = 0, LANG_ZH, LANG_KO, LANG_COUNT };
 // idiomas que necesitan una fuente U8g2 y texto UTF-8 en vez de la tabla CP437
-#define LANG_IS_CJK(l) ((l) == LANG_ZH)
+#define LANG_IS_CJK(l) ((l) == LANG_ZH || (l) == LANG_KO)
 // idioma por defecto (placa nueva o NVS borrada): ingles. El instalador web lo
 // usa gente de fuera; una placa que ya eligio idioma lo tiene en la NVS ("lang2").
 #define LANG_DEFAULT LANG_EN

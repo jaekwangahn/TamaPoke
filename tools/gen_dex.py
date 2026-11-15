@@ -37,6 +37,8 @@ def main():
     out.append("// GENERADO por tools/gen_dex.py desde tools/dex_data.py - no editar\n\n")
     out.append(f"#define DEX_COUNT {len(DEX)}\n")
     out.append(f"#define DEX_BITMAP_BYTES {(len(DEX) + 7) // 8}  // pokedex en bits (dexReg)\n\n")
+    out.append('#include "dex_names_ko.h"\n')
+    out.append('static_assert(DEX_NAME_KO_COUNT == DEX_COUNT, "Korean species names must cover the full Dex");\n\n')
     out.append(
         "// rareza: 0 = solo por evolucion, 1 = comun, 2 = raro, 3 = legendario,\n"
         "// 4 = no disponible (sin sprite animado: ni huevo ni evolucion)\n"
@@ -94,7 +96,8 @@ def main():
         "// idioma no tiene nombre propio para ella).\n"
         "static inline const char *dexName(int16_t dex) {\n"
         "  if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;\n"
-        "  const char *n = (gLang == LANG_ZH) ? DEX_NAME_ZH[dex] : nullptr;\n"
+        "  const char *n = (gLang == LANG_KO) ? DEX_NAME_KO[dex]\n"
+        "                  : (gLang == LANG_ZH) ? DEX_NAME_ZH[dex] : nullptr;\n"
         "  return n ? n : DEX_TBL[dex].name;\n"
         "}\n\n")
 

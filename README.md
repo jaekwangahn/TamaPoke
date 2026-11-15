@@ -17,6 +17,13 @@ Play chess, earn points, and spend them on candy, eggs and potions for a compani
 
 **English** · [简体中文](README.zh-CN.md)
 
+This local build also adds **한국어** in Settings → Language, Korean UI and
+Wi-Fi setup text, and official Korean names for all 1025 species. English and
+Chinese selections and existing saves are preserved. Korean font subsets are
+generated with `python3 tools/make_ko_font.py` (Pillow and fonttools required);
+species names use `python3 tools/gen_names_ko.py`. The original Latin nickname
+keyboard and English gym character/place/badge names remain unchanged.
+
 <img src="docs/demo.gif" alt="On the real board: tap the standby clock and the pet wakes up and walks around" width="360">
 
 </div>
