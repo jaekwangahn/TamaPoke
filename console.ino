@@ -154,7 +154,10 @@ void handleSerial() {
   if (line.length() == 0) return;
   if (sdSerialCommand(line)) return;
 
-  if (line == "HATCH") {
+  if (line == "AUDIO") {
+    audioPrintStatus();
+    Serial.println("DONE");
+  } else if (line == "HATCH") {
     pet.eggTap(); pet.eggTap(); pet.eggTap();
     Serial.println("DONE");
   } else if (line.startsWith("SPEC ")) {

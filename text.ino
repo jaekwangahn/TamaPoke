@@ -151,6 +151,7 @@ static uint32_t screenKey() {
   } else if (clockOpen) {
     h = mixKey(h, pet.lastSeenEpoch / 60);  // la hora que se enseña
     h = mixKey(h, audioEnabled());
+    h = mixKey(h, audioMusicEnabled());
     h = mixKey(h, userDim);
     h = mixKey(h, tempF);
     h = mixKey(h, gLang);

@@ -4,6 +4,8 @@
 #include <Wire.h>
 #include <ESP_I2S.h>
 #include <Preferences.h>
+#include <atomic>
+#include <math.h>
 
 // ---------------------------------------------------------------------------
 // Audio del TamaPoke: códec ES8311 (DAC -> amplificador PA -> altavoz) por I2S.
@@ -18,12 +20,13 @@
 
 static I2SClass i2s;
 static bool gReady = false;
-static bool gOn = true;
-static bool gSleeping = false;
+static std::atomic<bool> gOn{true}, gMusicOn{true};
+static std::atomic<uint32_t> gMusicContext{0}, gMusicBlocks{0};
+static std::atomic<bool> gSleeping{false};
 static bool gIdle = false;          // sin interaccion reciente (ver power.h): el amplificador consume en reposo
 static uint32_t gAmpHoldUntil = 0;  // un efecto pedido en reposo mantiene el amplificador encendido hasta aqui
 static bool gAmpHold = false;       // (indicador aparte: asi la comparacion no falla al dar la vuelta millis())
-static uint32_t gAmpOnAt = 0;       // cuando se encendio el amplificador
+static std::atomic<uint32_t> gAmpOnAt{0};       // cuando se encendio el amplificador
 static QueueHandle_t gQ = nullptr;
 
 // El NS4150B tarda bastante mas de 8 ms en estabilizarse tras cada apagado, asi
@@ -37,7 +40,7 @@ static void updateAmplifierPower() {
   if (gAmpHold && (int32_t)(gAmpHoldUntil - millis()) <= 0) gAmpHold = false;
   bool idleOff = gIdle && !gAmpHold;
   static int last = -1;  // solo se escribe el pin si cambia
-  int want = (gReady && gOn && !gSleeping && !idleOff) ? HIGH : LOW;
+  int want = (gReady && !gSleeping && (gMusicOn || (gOn && !idleOff))) ? HIGH : LOW;
   if (want != last) {
     last = want;
     if (want == HIGH) gAmpOnAt = millis();
@@ -121,42 +124,97 @@ static const SfxDef SFX[SFX_COUNT] = {
 
 static int16_t buf[256 * 2];  // estéreo intercalado (L=R)
 
-// reproduce un tono (o silencio si f==0) con rampa de ataque/caida anti-click
-static void playTone(uint16_t f, uint16_t ms) {
-  int total = SAMPLE_RATE * ms / 1000;
-  int half = f ? (SAMPLE_RATE / (2 * f)) : 0;  // medio periodo en muestras
-  const int16_t amp = 5000;
-  int phase = 0, done = 0;
-  bool high = true;
-  while (done < total) {
-    int n = total - done; if (n > 256) n = 256;
-    for (int i = 0; i < n; i++) {
-      int16_t s = 0;
-      if (f) {
-        s = high ? amp : -amp;
-        int idx = done + i;
-        if (idx < 64) s = (int16_t)(s * idx / 64);                 // ataque
-        else if (idx > total - 96) s = (int16_t)(s * (total - idx) / 96);  // caida
-        if (++phase >= half) { phase = 0; high = !high; }
-      }
-      buf[i * 2] = s; buf[i * 2 + 1] = s;
-    }
-    i2s.write((uint8_t *)buf, n * 4);
-    done += n;
+// One task owns I2S. Render music and effects in 16 ms blocks so a switch
+// or sleep transition can take effect without waiting for a whole phrase.
+struct Voice {
+  uint32_t phase = 0, increment = 0;
+  void start(uint8_t midi) {
+    phase = 0;
+    increment = midi ? static_cast<uint32_t>(440.0 * pow(2.0, (midi - 69) / 12.0)
+                                             * 4294967296.0 / SAMPLE_RATE) : 0;
   }
-}
+  int sample(const int16_t *wave, uint8_t harmonic, int gain, int envelope) {
+    if (!increment) return 0;
+    const uint32_t p = phase;
+    phase += increment;
+    const int value = wave[p >> 24] + wave[(p * harmonic) >> 24] / 4;
+    return value * gain * envelope / (256 * 8);
+  }
+};
 
 static void audioTask(void *) {
-  uint8_t id;
+  int16_t wave[256];
+  for (int i = 0; i < 256; ++i) wave[i] = lroundf(1600 * sinf(i * 6.2831853f / 256));
+  Voice lead, harmony, bass;
+  uint8_t step = 0, id = SFX_COUNT, noteIndex = 0;
+  int position = 0, length = 0, fxPosition = 0, fxLength = 0, fxHalf = 0;
+  uint32_t activeContext = UINT32_MAX;
+  MusicVoice instrument = MusicVoice::Felt;
   for (;;) {
-    if (xQueueReceive(gQ, &id, portMAX_DELAY) && gOn && !gSleeping && gReady &&
-        id < SFX_COUNT) {
-      const SfxDef &d = SFX[id];
-      // el NS4150B tarda mas de 8 ms en estabilizarse: si se acaba de encender, el efecto espera
-      int32_t since = (int32_t)(millis() - gAmpOnAt);
-      if (since >= 0 && since < 50) vTaskDelay(pdMS_TO_TICKS(50 - since));
-      for (uint8_t i = 0; i < d.len; i++) playTone(d.n[i].f, d.n[i].ms);
+    const bool sleeping = gSleeping;
+    const bool music = gMusicOn && !sleeping;
+    const bool effects = gOn && !sleeping;
+    if (!effects) {
+      id = SFX_COUNT;
+      fxLength = 0;
+      xQueueReset(gQ);
     }
+    if (!music) length = 0;
+    if (!music && id == SFX_COUNT && uxQueueMessagesWaiting(gQ) == 0) {
+      vTaskDelay(pdMS_TO_TICKS(12));
+      continue;
+    }
+    if (millis() - gAmpOnAt.load() < 50) {
+      vTaskDelay(pdMS_TO_TICKS(8));
+      continue;
+    }
+    if (effects && id == SFX_COUNT && xQueueReceive(gQ, &id, 0)) noteIndex = 0;
+    const uint32_t context = gMusicContext.load();
+    for (int i = 0; i < 256; ++i) {
+      int value = 0;
+      if (music) {
+        if (position >= length || activeContext != context) {
+          if (activeContext != context) step = 0;
+          activeContext = context;
+          MusicStep bar = musicStep({MusicPlace(context & 3), MusicLight((context >> 2) & 3),
+                                     MusicWeather((context >> 4) & 3), uint8_t(context >> 8)}, step++);
+          lead.start(bar.lead);
+          harmony.start(bar.harmony);
+          bass.start(bar.bass);
+          position = 0;
+          length = SAMPLE_RATE * bar.milliseconds / 1000;
+          instrument = bar.voice;
+        }
+        const int edge = min(256, min(position, length - position));
+        const int decay = 256 - position * (instrument == MusicVoice::Felt ? 110 : 220) / length;
+        const int env = edge * decay / 256;
+        value = lead.sample(wave, instrument == MusicVoice::Bell ? 3 : 2, 2, env)
+              + harmony.sample(wave, 2, 1, env)
+              + bass.sample(wave, 2, 1, env);
+        // Keep the instrumental bed well below the game cues.
+        ++position;
+      }
+      if (effects) {
+        if (id < SFX_COUNT && fxLength == 0) {
+          const Note &note = SFX[id].n[noteIndex++];
+          fxLength = SAMPLE_RATE * note.ms / 1000;
+          fxHalf = note.f ? SAMPLE_RATE / (2 * note.f) : 0;
+          fxPosition = 0;
+        }
+        if (fxLength) {
+          const int ramp = min(64, min(fxPosition, fxLength - fxPosition));
+          if (fxHalf) value += ((fxPosition / fxHalf) % 2 ? -5000 : 5000) * ramp / 64;
+          if (++fxPosition >= fxLength) {
+            fxLength = 0;
+            if (noteIndex == SFX[id].len) id = SFX_COUNT;
+          }
+        }
+      }
+      buf[i * 2] = buf[i * 2 + 1] = value;
+    }
+    const size_t written = i2s.write(reinterpret_cast<uint8_t *>(buf), sizeof(buf));
+    if (music && written == sizeof(buf)) ++gMusicBlocks;
+    if (written == 0) vTaskDelay(pdMS_TO_TICKS(12));
   }
 }
 
@@ -176,19 +234,21 @@ void audioBegin() {
   Preferences p;
   p.begin("tamapoke", true);
   gOn = p.getBool("snd", true);
+  gMusicOn = p.getBool("bgm", gOn.load());
   p.end();
 
+  gQ = xQueueCreate(8, sizeof(uint8_t));
+  if (!gQ || xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 1, nullptr, 0) != pdPASS) return;
   gReady = true;
   updateAmplifierPower();
-  gQ = xQueueCreate(8, sizeof(uint8_t));
-  xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 1, nullptr, 0);
   sfxPlay(SFX_HATCH);  // jingle de arranque (confirma que suena)
 }
 
-bool audioBusy() { return gAmpHold && (int32_t)(gAmpHoldUntil - millis()) > 0; }
+bool audioBusy() { return (gReady && gMusicOn && !gSleeping) ||
+    (gAmpHold && (int32_t)(gAmpHoldUntil - millis()) > 0); }
 
 void sfxPlay(uint8_t id) {
-  if (gReady && gOn && gQ) {
+  if (id < SFX_COUNT && gReady && gOn && !gSleeping && gQ) {
     if (gIdle) {  // un aviso en reposo (p. ej. "listo para evolucionar") tiene que oirse
       gAmpHoldUntil = millis() + 4000;
       gAmpHold = true;
@@ -217,4 +277,28 @@ void audioSetSleeping(bool sleeping) {
 void audioSetIdle(bool idle) {
   gIdle = idle;
   updateAmplifierPower();  // tambien cuando vence el mantenimiento de un aviso
+}
+
+bool audioMusicEnabled() { return gMusicOn; }
+
+void audioSetMusicEnabled(bool on) {
+  gMusicOn = on;
+  updateAmplifierPower();
+  Preferences p;
+  p.begin("tamapoke", false);
+  p.putBool("bgm", on);
+}
+
+void audioSetMusicContext(MusicContext context) {
+  gMusicContext.store(uint32_t(context.place) | (uint32_t(context.light) << 2) |
+                      (uint32_t(context.weather) << 4) | (uint32_t(context.region) << 8));
+}
+
+void audioPrintStatus() {
+  const uint32_t context = gMusicContext.load();
+  Serial.printf("audio ready=%d sfx=%d bgm=%d sleeping=%d place=%u light=%u weather=%u region=%u blocks=%lu\n",
+                gReady, gOn.load(), gMusicOn.load(), gSleeping.load(),
+                unsigned(context & 3), unsigned((context >> 2) & 3),
+                unsigned((context >> 4) & 3), unsigned(context >> 8),
+                static_cast<unsigned long>(gMusicBlocks.load()));
 }

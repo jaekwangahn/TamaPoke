@@ -102,6 +102,17 @@ static void setButton(int x, int y, const char *l, bool on, bool apagado, int ts
   }
 }
 
+// Two independent sound switches share the original sound tile.
+static void drawAudioSwitch(int y, const char *label, bool on) {
+  constexpr int height = SET_BTN_H / 2 - 2;
+  gfx->fillRoundRect(SET_BTN_X0, y, SET_BTN_W, height, 9, on ? UI_BAR_OK : UI_WHITE);
+  gfx->drawRoundRect(SET_BTN_X0, y, SET_BTN_W, height, 9, UI_INK);
+  gfx->setTextColor(UI_INK);
+  setSize(2);
+  setCur(SET_BTN_X0 + (SET_BTN_W - textW(label, 2)) / 2, y + 5);
+  printT(label);
+}
+
 void renderClock() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -143,16 +154,18 @@ void renderClock() {
     gmtime_r(&bt, &btm);
     snprintf(fecha, sizeof(fecha), "%u/%u", (unsigned)(btm.tm_mon + 1), (unsigned)btm.tm_mday);
   }
-  const char *snd = audioEnabled() ? T(S_SND_ON) : T(S_SND_OFF), *rest = hayCopia ? T(S_RESTORE) : T(S_NO_BACKUP);
+  const char *rest = hayCopia ? T(S_RESTORE) : T(S_NO_BACKUP);
   const StrId bl[2] = { S_STATS, S_SYNC_NOW };
   // un solo tamaño para todos los botones: el 3 si caben todos, si no el 2
-  const char *grandes[4] = { snd, T(S_WIFI_SETUP), lp, rest };
+  const char *grandes[] = { T(S_WIFI_SETUP), lp, rest };
   int ts = 3;
   for (const char *l : grandes)
     if (textW(l, 3) > SET_BTN_W - 16) ts = 2;
   for (StrId id : bl)
     if (textW(T(id), 3) > STATS_BTN_W - 14) ts = 2;
-  setButton(SET_BTN_X0, SET_BTN_Y0, snd, audioEnabled(), false, ts);
+  drawAudioSwitch(SET_BTN_Y0, T(audioEnabled() ? S_SFX_ON : S_SFX_OFF), audioEnabled());
+  drawAudioSwitch(SET_BTN_Y0 + SET_BTN_H / 2 + 2,
+                  T(audioMusicEnabled() ? S_BGM_ON : S_BGM_OFF), audioMusicEnabled());
   setButton(SET_BTN_X1, SET_BTN_Y0, T(S_WIFI_SETUP), wifiHasCreds(), false, ts);
   setButton(SET_BTN_X0, SET_BTN_Y1, lp, false, false, ts);
   setButton(SET_BTN_X1, SET_BTN_Y1, rest, false, !hayCopia, ts, hayCopia ? fecha : nullptr);
@@ -313,8 +326,12 @@ void clockTap(int16_t x, int16_t y) {
   }
   bool row0 = y >= SET_BTN_Y0 && y < SET_BTN_Y0 + SET_BTN_H, row1 = y >= SET_BTN_Y1 && y < SET_BTN_Y1 + SET_BTN_H;
   if (row0 && col0) {  // sonido
-    audioSetEnabled(!audioEnabled());
-    if (audioEnabled()) sfxPlay(SFX_TAP);  // confirma al encender
+    if (y < SET_BTN_Y0 + SET_BTN_H / 2) {
+      audioSetEnabled(!audioEnabled());
+      if (audioEnabled()) sfxPlay(SFX_TAP);
+    } else {
+      audioSetMusicEnabled(!audioMusicEnabled());
+    }
   } else if (row0 && col1) {  // configurar wi-fi
     clockOpen = false;
     wifiPortalStart();

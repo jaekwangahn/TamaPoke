@@ -498,7 +498,22 @@ void loop() {
   // el amplificador sigue al estado de sueno (la llamada sale sola si no cambia).
   // Aqui cubre todas las vias: el boton de luz, el sueno nocturno y el que llega
   // aplicado desde la progresion offline.
-  audioSetSleeping(pet.sleeping);
+  audioSetSleeping(pet.sleeping || screenOff);
+  static uint32_t checkedMusicAt = 0;
+  if (now - checkedMusicAt >= 250) {
+    checkedMusicAt = now;
+    const Weather wx = weatherNow();
+    const int kind = gWxForce >= 0 ? gWxForce : wx.valid ? wx.kind : WX_UNKNOWN;
+    const auto mood = kind == WX_SNOW ? MusicWeather::Snow
+                    : kind == WX_RAIN || kind == WX_STORM ? MusicWeather::Wet : MusicWeather::Fair;
+    const int minute = pet.lastSeenEpoch ? (pet.lastSeenEpoch / 60) % 1440 : 13 * 60;
+    const int phase = gPhaseForce >= 0 ? gPhaseForce : dayPhase(minute, wx.sunriseMin, wx.sunsetMin);
+    const auto light = phase == PH_NIGHT ? MusicLight::Night
+                     : phase == PH_TWILIGHT ? MusicLight::Twilight : MusicLight::Day;
+    const auto place = farmOpen ? MusicPlace::Farm
+                     : chOpen || gymsOpen ? MusicPlace::Sports : MusicPlace::Home;
+    audioSetMusicContext({place, light, mood, uint8_t(max(0, regionOf(pet.speciesId)))});
+  }
 
   // avisa con un sonido cuando el bicho pasa a estar listo para evolucionar
   // (incluye el caso de cumplir al despertar). canEvolveNow es false durmiendo.

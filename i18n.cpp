@@ -131,6 +131,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "or train with fruits", "Badges", "League titles", "Fun finds",
     "%u h", "%u min",
     "Buy for %u pts?", "Spend %u pts?",
+    "SFX ON", "SFX OFF", "BGM ON", "BGM OFF",
   },
   // ---------------- ZH ----------------
   // Chino simplificado. Los especificadores van en el orden de la fila
@@ -298,6 +299,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "或者吃果子练训练值", "徽章总数", "联盟冠军", "趣玩收获",
     "%u 小时", "%u 分钟",
     "花 %u 分购买？", "花 %u 分？",
+    "音效开", "音效关", "音乐开", "音乐关",
   },
   // ---------------- KO ----------------
   // Korean UTF-8; keep printf arguments in the same order as English.
@@ -424,6 +426,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "열매로 훈련해도 좋아", "배지", "리그 우승", "활동 수확",
     "%u시간", "%u분",
     "%u포인트에 살까?", "%u포인트를 쓸까?",
+    "효과음 켬", "효과음 끔", "BGM 켬", "BGM 끔",
   },
 };
 

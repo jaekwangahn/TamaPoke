@@ -1,3 +1,5 @@
+#include "../bgm.h"
+
 // Tiempo y fase del dia (weather.cpp) con respuestas como las de Open-Meteo.
 #include "framework.h"
 #include "../weather.h"
@@ -86,4 +88,16 @@ TEST(weather, sin_datos_del_sol_usa_6_30_y_19_30) {
   CHECK_EQ(dayPhase(6 * 60 + 30, -1, -1), (uint8_t)PH_TWILIGHT);
   CHECK_EQ(dayPhase(13 * 60, -1, -1), (uint8_t)PH_DAY);
   CHECK_EQ(dayPhase(21 * 60, -1, -1), (uint8_t)PH_NIGHT);
+}
+
+TEST(bgm, scene_weather_and_light_change_the_arrangement) {
+  const MusicContext home{MusicPlace::Home, MusicLight::Day, MusicWeather::Fair, 0};
+  const auto base = musicStep(home, 1);
+  CHECK(musicStep({MusicPlace::Farm, home.light, home.weather, 0}, 1).lead != base.lead);
+  CHECK(musicStep({MusicPlace::Sports, home.light, home.weather, 0}, 1).milliseconds < base.milliseconds);
+  CHECK(musicStep({home.place, MusicLight::Night, home.weather, 0}, 1).milliseconds > base.milliseconds);
+  CHECK(musicStep({home.place, home.light, MusicWeather::Wet, 0}, 1).voice == MusicVoice::Pluck);
+  CHECK(musicStep({home.place, home.light, MusicWeather::Snow, 0}, 1).voice == MusicVoice::Bell);
+  CHECK(musicStep({home.place, home.light, home.weather, 1}, 1).lead != base.lead);
+  CHECK_EQ(musicStep(home, 65).lead, base.lead);
 }
