@@ -132,8 +132,30 @@ void hubSwipe(int dir) {
   if (dir > 0) hubOpen = false;  // a la derecha: vuelta a la principal
 }
 
+// Keep the animated sprites for one farm page in PSRAM.
+#define FARM_PER_PAGE 9
+struct FarmWalker {
+  PmdMon sprite;
+  float x = 0, y = 0;
+  int destX = 0, destY = 0;
+  uint32_t since = 0, duration = 0;
+  uint8_t action = PMD_IDLE;
+  bool moving = false;
+};
+static FarmWalker farmWalkers[FARM_PER_PAGE];
+static uint8_t farmWalkerCount = 0;
+static bool farmWalkersLoaded = false;
+static uint32_t farmLastFrame = 0;
+
+static void releaseFarmWalkers() {
+  for (auto &walker : farmWalkers) walker.sprite.unload();
+  farmWalkerCount = 0;
+  farmWalkersLoaded = false;
+}
+
 void openFarm() {
   if (pet.ceremony) return;
+  releaseFarmWalkers();
   farmOpen = true;
   farmPage = 0;
   farmDetail = -1;
@@ -141,18 +163,13 @@ void openFarm() {
 }
 
 void closeFarm() {
+  releaseFarmWalkers();
   farmOpen = false;
   albumOpen = false;
   farmDetail = -1;
   galleryPmd.unload();
 }
 
-// rejilla de la granja: 3 x 3 casillas grandes (miniaturas a x3)
-#define FARM_COLS 3
-#define FARM_PER_PAGE 9
-#define FARM_CELL 106
-#define FARM_X0 (CX - FARM_COLS * FARM_CELL / 2)
-#define FARM_Y0 70
 static int farmPages() { return farmCount() > 0 ? (farmCount() + FARM_PER_PAGE - 1) / FARM_PER_PAGE : 1; }
 
 // sacar al elegido: el compañero actual entra en la granja en su lugar
@@ -177,7 +194,7 @@ void farmSwipe(int dir) {
     albumSwipe(dir);
     return;
   }
-  if (farmDetail >= 0) {  // en detalle: volver a la rejilla
+  if (farmDetail >= 0) {  // en detalle: volver al prado
     farmDetail = -1;
     galleryPmd.unload();
     farmDirty = true;
@@ -187,6 +204,7 @@ void farmSwipe(int dir) {
   if (np < 0) { closeFarm(); return; }  // retroceder desde la primera = salir
   if (np > farmPages() - 1) np = farmPages() - 1;
   if (np != farmPage) {
+    releaseFarmWalkers();
     farmPage = np;
     farmDirty = true;
   }
@@ -230,12 +248,132 @@ static void feedFarmFruit(int idx, uint8_t item) {
   sfxPlay(SFX_EAT);
 }
 
+static void loadFarmWalkers(uint32_t now) {
+  if (farmWalkersLoaded) return;
+  farmWalkersLoaded = true;
+  farmLastFrame = now;
+  const int first = farmPage * FARM_PER_PAGE;
+  farmWalkerCount = min(FARM_PER_PAGE, max(0, farmCount() - first));
+  static const int16_t starts[FARM_PER_PAGE][2] = {
+    {130, 200}, {290, 156}, {284, 311}, {171, 297}, {345, 233},
+    {108, 269}, {218, 213}, {337, 284}, {229, 358}
+  };
+  for (uint8_t i = 0; i < farmWalkerCount; ++i) {
+    auto &walker = farmWalkers[i];
+    const auto &entry = farmAt(first + i);
+    // A single TPK2 can be up to 3 MiB. Leave room for other screens and Wi-Fi.
+    if (ESP.getFreePsram() >= 4UL * 1024 * 1024)
+      walker.sprite.load(entry.speciesId, entry.shiny);
+    walker.x = starts[i][0];
+    walker.y = starts[i][1];
+    walker.since = now;
+    walker.duration = 250 + i * 310;
+    walker.action = PMD_IDLE;
+    walker.moving = false;
+  }
+}
+
+static void updateFarmWalker(uint8_t slot, uint32_t now, float dt) {
+  auto &walker = farmWalkers[slot];
+  if (walker.moving) {
+    float dx = walker.destX - walker.x, dy = walker.destY - walker.y;
+    float distance = sqrtf(dx * dx + dy * dy);
+    float step = 0.032f * dt;
+    if (distance > step) {
+      walker.x += dx * step / distance;
+      walker.y += dy * step / distance;
+      return;
+    }
+    walker.x = walker.destX;
+    walker.y = walker.destY;
+    walker.moving = false;
+    walker.since = now;
+    walker.duration = random(850, 2350);
+    const uint8_t actions[] = { PMD_IDLE, PMD_HOP, PMD_NOD, PMD_POSE, PMD_SIT, PMD_EAT };
+    walker.action = actions[random(sizeof(actions))];
+    if (!walker.sprite.has(walker.action)) walker.action = PMD_IDLE;
+    return;
+  }
+  if (now - walker.since < walker.duration) return;
+  // Project a nearby destination into the walkable ellipse.
+  float x = (walker.x + random(-100, 101) - CX) / 133.0f;
+  float y = (walker.y + random(-77, 78) - 252) / 100.0f;
+  float radius = sqrtf(x * x + y * y);
+  if (radius > 1) { x /= radius; y /= radius; }
+  walker.destX = CX + 133 * x;
+  walker.destY = 252 + 100 * y;
+  walker.action = walker.destX < walker.x ? PMD_WALKL : PMD_WALKR;
+  if (!walker.sprite.has(walker.action)) walker.action = PMD_IDLE;
+  walker.moving = true;
+  walker.since = now;
+}
+
+static void drawFarmMeadow() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, C565(187, 212, 159));
+  gfx->fillEllipse(CX, 250, 177, 126, C565(207, 225, 172));
+  gfx->fillEllipse(354, 155, 49, 28, C565(140, 172, 133));
+  gfx->fillEllipse(351, 152, 43, 23, C565(101, 173, 180));
+  gfx->drawFastHLine(332, 148, 18, C565(170, 221, 213));
+  gfx->drawFastHLine(355, 157, 24, C565(170, 221, 213));
+  for (int i = 0; i < 24; ++i) {
+    const int x = 64 + (i * 107) % 336;
+    const int y = 90 + (i * 63) % 283;
+    if ((x - CX) * (x - CX) + (y - CY) * (y - CY) > 181 * 181) continue;
+    gfx->drawFastVLine(x, y, 5, C565(136, 171, 115));
+    gfx->drawPixel(x - 2, y + 1, C565(136, 171, 115));
+    gfx->drawPixel(x + 2, y + 1, C565(136, 171, 115));
+    if (i % 3 == 0) gfx->fillRect(x - 2, y - 3, 4, 3, C565(240, 172, 143));
+  }
+  const int16_t trees[][2] = { {78, 152}, {390, 265}, {96, 337} };
+  for (const auto &tree : trees) {
+    const int x = tree[0], y = tree[1];
+    gfx->fillEllipse(x, y + 10, 19, 6, C565(154, 183, 131));
+    gfx->fillRect(x - 4, y - 11, 8, 21, C565(137, 103, 76));
+    gfx->fillRoundRect(x - 20, y - 34, 40, 28, 8, C565(88, 146, 108));
+    gfx->fillRoundRect(x - 14, y - 44, 28, 29, 8, C565(113, 166, 113));
+    gfx->fillRect(x - 8, y - 39, 12, 5, C565(153, 194, 124));
+  }
+}
+
+static void drawFarmWalkers(uint32_t now) {
+  uint8_t order[FARM_PER_PAGE];
+  for (uint8_t i = 0; i < farmWalkerCount; ++i) {
+    uint8_t j = i;
+    while (j && farmWalkers[order[j - 1]].y > farmWalkers[i].y) {
+      order[j] = order[j - 1];
+      --j;
+    }
+    order[j] = i;
+  }
+  for (uint8_t i = 0; i < farmWalkerCount; ++i) {
+    const auto slot = order[i];
+    auto &walker = farmWalkers[slot];
+    const auto &entry = farmAt(farmPage * FARM_PER_PAGE + slot);
+    const int x = walker.x, y = walker.y;
+    gfx->fillEllipse(x, y - 1, 20, 5, C565(158, 184, 129));
+    if (walker.sprite.has(walker.action)) {
+      drawPmdActM(walker.sprite, walker.action, x, y, now - walker.since,
+                  walker.moving || walker.action == PMD_IDLE, false, 2);
+    } else if (const uint8_t *thumb = thumbs.get(entry.speciesId)) {
+      drawThumbIn(thumb, x - 24, y - 48, 1, false, 48);
+    } else {
+      gfx->fillCircle(x, y - 15, 12, DEX_TBL[entry.speciesId].accent);
+    }
+    if (entry.shiny) {
+      gfx->drawFastVLine(x + 23, y - 40, 7, C_GOLD);
+      gfx->drawFastHLine(x + 20, y - 37, 7, C_GOLD);
+    }
+  }
+}
+
 void farmTap(int16_t x, int16_t y) {
   if (albumOpen) {
     albumTap(x, y);
     return;
   }
-  if (farmDetail < 0 && x >= ALBUM_BTN_X && x <= ALBUM_BTN_X + ALBUM_BTN_W && y >= ALBUM_BTN_Y - 6) {
+  if (farmDetail < 0 && x >= ALBUM_BTN_X && x <= ALBUM_BTN_X + ALBUM_BTN_W && y >= ALBUM_BTN_Y - 6 && y <= ALBUM_BTN_Y + ALBUM_BTN_H) {
+    releaseFarmWalkers();
     albumOpen = true;  // boton del album, abajo
     albumPage = 0;
     farmDirty = true;
@@ -253,17 +391,23 @@ void farmTap(int16_t x, int16_t y) {
           return;
         }
     }
-    farmDetail = -1;  // fuera del boton: volver a la rejilla
+    farmDetail = -1;  // fuera del boton: volver al prado
     galleryPmd.unload();
     farmDirty = true;
     return;
   }
-  if (y < FARM_Y0) { closeFarm(); return; }  // tocar la cabecera = salir
-  if (x < FARM_X0) return;
-  int c = (x - FARM_X0) / FARM_CELL, r = (y - FARM_Y0) / FARM_CELL;
-  if (c >= FARM_COLS || r >= FARM_COLS) return;
-  int idx = farmPage * FARM_PER_PAGE + r * FARM_COLS + c;
-  if (idx >= farmCount()) return;
+  if (y < 70) { closeFarm(); return; }
+  int idx = -1;
+  float front = -1;
+  for (uint8_t i = 0; i < farmWalkerCount; ++i) {
+    const auto &walker = farmWalkers[i];
+    if (fabsf(x - walker.x) <= 29 && y >= walker.y - 60 && y <= walker.y + 8 && walker.y > front) {
+      idx = farmPage * FARM_PER_PAGE + i;
+      front = walker.y;
+    }
+  }
+  if (idx < 0 || idx >= farmCount()) return;
+  releaseFarmWalkers();
   farmDetail = idx;
   galleryPmd.load(farmAt(idx).speciesId, farmAt(idx).shiny);
   farmRecOk = farmPeek(farmAt(idx).speciesId, farmRec);
@@ -329,12 +473,16 @@ void renderFarm() {
     return;
   }
 
-  // la rejilla es estatica, salvo mientras dura un aviso
-  bool avisando = toastMsg && timeLeft(toastUntil);
-  if (!farmDirty && !avisando) return;
-  farmDirty = avisando;  // repinta una vez mas al apagarse el aviso
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  const uint32_t now = millis();
+  loadFarmWalkers(now);
+  const uint32_t elapsed = now - farmLastFrame;
+  if (!farmDirty && elapsed < 66) return;
+  farmDirty = false;
+  farmLastFrame = now;
+  for (uint8_t i = 0; i < farmWalkerCount; ++i)
+    updateFarmWalker(i, now, min<uint32_t>(elapsed, 100));
+  drawFarmMeadow();
+  drawFarmWalkers(now);
   char head[24];
   snprintf(head, sizeof(head), T(S_FARM_FMT), (unsigned)farmCount());
   gfx->setTextColor(UI_INK);
@@ -346,20 +494,6 @@ void renderFarm() {
     setSize(2);
     setCur(centerX(m, 2), CY - 8);
     printT(m);
-  }
-  for (int i = 0; i < FARM_PER_PAGE; i++) {
-    int idx = farmPage * FARM_PER_PAGE + i;
-    if (idx >= farmCount()) break;
-    const FarmEntry &e = farmAt(idx);
-    int x = FARM_X0 + (i % FARM_COLS) * FARM_CELL, y = FARM_Y0 + (i / FARM_COLS) * FARM_CELL;
-    const uint8_t *t = thumbs.get(e.speciesId);
-    if (t) drawThumbIn(t, x, y, 3, false, FARM_CELL);
-    if (e.shiny) {
-      gfx->setTextColor(UI_BAR_WARN);
-      setSize(2);
-      setCur(x + FARM_CELL - 22, y + 6);
-      printT("*");
-    }
   }
   if (farmPages() > 1) {  // pagina, a la izquierda del boton del album
     char pg[8];
