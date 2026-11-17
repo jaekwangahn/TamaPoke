@@ -2,7 +2,7 @@
 #include "sdmon.h"
 #include <Arduino.h>
 #include <FS.h>
-#include <SD_MMC.h>
+#include "game_storage.h"
 #include <nvs.h>
 #include <nvs_flash.h>
 
@@ -54,8 +54,8 @@ static esp_err_t writeValue(nvs_handle_t h, const char *key, nvs_type_t t, const
 bool backupSave(uint32_t wallEpoch) {
   if (!sdReady) return false;
   static uint8_t buf[1024];  // el blob mas grande es la pokedex (129 bytes) y la mochila
-  SD_MMC.remove(BK_TMP);
-  File f = SD_MMC.open(BK_TMP, FILE_WRITE);
+  gameFiles.remove(BK_TMP);
+  File f = gameFiles.open(BK_TMP, FILE_WRITE);
   if (!f) return false;
   uint8_t ver = BK_VER;
   uint16_t count = 0;
@@ -84,18 +84,18 @@ bool backupSave(uint32_t wallEpoch) {
   if (ok) ok = f.seek(9) && put(f, &count, 2);  // el numero de entradas, ya sabido
   f.close();
   if (!ok || count == 0) {
-    SD_MMC.remove(BK_TMP);
+    gameFiles.remove(BK_TMP);
     return false;
   }
-  SD_MMC.remove(BK_PATH);  // solo una copia: la nueva sustituye a la anterior
-  ok = SD_MMC.rename(BK_TMP, BK_PATH);
+  gameFiles.remove(BK_PATH);  // solo una copia: la nueva sustituye a la anterior
+  ok = gameFiles.rename(BK_TMP, BK_PATH);
   Serial.printf("copia: %u entradas %s\n", count, ok ? "guardada" : "FALLO");
   return ok;
 }
 
 static bool openBackup(File &f, uint32_t &epoch, uint16_t &count) {
   if (!sdReady) return false;
-  f = SD_MMC.open(BK_PATH, FILE_READ);
+  f = gameFiles.open(BK_PATH, FILE_READ);
   if (!f) return false;
   char mag[4];
   uint8_t ver;
@@ -126,8 +126,8 @@ bool backupRestore() {
   // en PSRAM y solo mientras se restaura (14 KB que en la RAM interna hacen falta a TLS)
   const uint16_t ENT_CAP = 256;
   const uint32_t DATA_CAP = 8192;
-  Ent *ents = (Ent *)ps_malloc(ENT_CAP * sizeof(Ent));
-  uint8_t *data = (uint8_t *)ps_malloc(DATA_CAP);
+  Ent *ents = (Ent *)storageAlloc(ENT_CAP * sizeof(Ent));
+  uint8_t *data = (uint8_t *)storageAlloc(DATA_CAP);
   uint32_t used = 0;
   bool ok = ents && data && count <= ENT_CAP;
   for (uint16_t i = 0; i < count && ok; i++) {

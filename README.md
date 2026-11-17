@@ -80,6 +80,8 @@ potions → the next morning the pet cheers about yesterday's games.**
 
 ## Hardware
 
+The classic ESP32 GeekMagic SmallTV PRO with the top touch button has a [separate build and control guide](docs/smalltv-pro.md).
+
 - [ESP32-S3-Touch-AMOLED-1.75](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.75)
   (Standard or -G; upstream notes that the "-B" version comes in a case that
   doesn't fit, and the "1.75C" is a different board).

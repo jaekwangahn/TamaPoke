@@ -44,19 +44,26 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar, uint1
 void openClock() { clockOpen = true; }
 
 // ajustes: la hora en grande y cuatro botones grandes en 2 x 2
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#define SET_BTN_W 206
+#define SET_BTN_X0 UI_SIDE_MARGIN
+#define SET_BTN_X1 (LCD_WIDTH - UI_SIDE_MARGIN - SET_BTN_W)
+#define STATS_BTN_W 154
+#define STATS_BTN_X1 (LCD_WIDTH - UI_SIDE_MARGIN - STATS_BTN_W)
+#define BRI_BTN_X 198
+#else
 #define SET_BTN_W 156
-#define SET_BTN_H 60
-#define SET_BTN_X0 72    // columnas: 72 y 238
+#define SET_BTN_X0 72
 #define SET_BTN_X1 238
-#define SET_BTN_Y0 190   // filas: 190 y 262
-#define SET_BTN_Y1 262
-#define STATS_BTN_Y 334
-#define STATS_BTN_H 48
-// la fila de abajo son dos botones de texto (72 y 276) con el brillo en medio,
-// mas estrecho porque solo lleva su icono
 #define STATS_BTN_W 118
 #define STATS_BTN_X1 276
 #define BRI_BTN_X 198
+#endif
+#define SET_BTN_H 60
+#define SET_BTN_Y0 190
+#define SET_BTN_Y1 262
+#define STATS_BTN_Y 334
+#define STATS_BTN_H 48
 #define BRI_BTN_W 70
 // unidad de la temperatura: una pildora pequeña entre el reloj y los botones
 #define TEMP_PILL_X 193
@@ -103,8 +110,7 @@ static void setButton(int x, int y, const char *l, bool on, bool apagado, int ts
 }
 
 void renderClock() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_SET_TIME), 3), 40);
@@ -143,16 +149,28 @@ void renderClock() {
     gmtime_r(&bt, &btm);
     snprintf(fecha, sizeof(fecha), "%u/%u", (unsigned)(btm.tm_mon + 1), (unsigned)btm.tm_mday);
   }
-  const char *snd = audioEnabled() ? T(S_SND_ON) : T(S_SND_OFF), *rest = hayCopia ? T(S_RESTORE) : T(S_NO_BACKUP);
+  const char *rest = hayCopia ? T(S_RESTORE) : T(S_NO_BACKUP);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const char *firstLabel = "OTA UPDATE";
+#else
+  const char *firstLabel = audioEnabled() ? T(S_SND_ON) : T(S_SND_OFF);
+#endif
   const StrId bl[2] = { S_STATS, S_SYNC_NOW };
   // un solo tamaño para todos los botones: el 3 si caben todos, si no el 2
-  const char *grandes[4] = { snd, T(S_WIFI_SETUP), lp, rest };
+  const char *grandes[4] = { firstLabel, T(S_WIFI_SETUP), lp, rest };
   int ts = 3;
   for (const char *l : grandes)
     if (textW(l, 3) > SET_BTN_W - 16) ts = 2;
   for (StrId id : bl)
     if (textW(T(id), 3) > STATS_BTN_W - 14) ts = 2;
-  setButton(SET_BTN_X0, SET_BTN_Y0, snd, audioEnabled(), false, ts);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const uint32_t pin = smallTvOtaPin();
+  char pinText[16];
+  snprintf(pinText, sizeof(pinText), "PIN %06lu", (unsigned long)pin);
+  setButton(SET_BTN_X0, SET_BTN_Y0, firstLabel, pin, false, ts, pin ? pinText : nullptr);
+#else
+  setButton(SET_BTN_X0, SET_BTN_Y0, firstLabel, audioEnabled(), false, ts);
+#endif
   setButton(SET_BTN_X1, SET_BTN_Y0, T(S_WIFI_SETUP), wifiHasCreds(), false, ts);
   setButton(SET_BTN_X0, SET_BTN_Y1, lp, false, false, ts);
   setButton(SET_BTN_X1, SET_BTN_Y1, rest, false, !hayCopia, ts, hayCopia ? fecha : nullptr);
@@ -174,7 +192,13 @@ void renderClock() {
   gfx->setTextColor(UI_HINT);
   setSize(2);
   setCur(centerX(T(S_CLOCK_CANCEL), 2), 396);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const char *hint = pin ? "tamapoke.local/update" : T(S_CLOCK_CANCEL);
+  setCur(centerX(hint, 2), 396);
+  printT(hint);
+#else
   printT(T(S_CLOCK_CANCEL));
+#endif
 
   // version del firmware (discreta, abajo del todo)
   char ver[20];
@@ -213,8 +237,7 @@ static void statRow(int y, StrId label, const char *val) {
 }
 
 void renderStats() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_STATS), 3), 40);
@@ -264,8 +287,7 @@ void clockTap(int16_t x, int16_t y) {
   if (restoreAsk) {
     restoreAsk = false;
     if (x >= 118 && x <= 218 && y >= 252 && y <= 304) {  // SI: se restaura y se reinicia
-      gfx->fillScreen(RGB565_BLACK);
-      gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+      drawPageBackground();
       gfx->setTextColor(UI_INK);
       setSize(2);
       setCur(centerX(T(S_RESTORING), 2), CY - 8);
@@ -313,8 +335,13 @@ void clockTap(int16_t x, int16_t y) {
   }
   bool row0 = y >= SET_BTN_Y0 && y < SET_BTN_Y0 + SET_BTN_H, row1 = y >= SET_BTN_Y1 && y < SET_BTN_Y1 + SET_BTN_H;
   if (row0 && col0) {  // sonido
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    pet.flushSave();
+    smallTvOtaArm();
+#else
     audioSetEnabled(!audioEnabled());
     if (audioEnabled()) sfxPlay(SFX_TAP);  // confirma al encender
+#endif
   } else if (row0 && col1) {  // configurar wi-fi
     clockOpen = false;
     wifiPortalStart();
@@ -564,8 +591,7 @@ void renderCardProgress() {
 }
 
 void renderCard() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   if (cardPage == 0) renderCardProfile();
   else if (cardPage == 1) renderCardStats();
   else if (cardPage == 2) renderCardMedals(0);
@@ -602,8 +628,7 @@ void openKeyboard() {
 }
 
 void renderKeyboard() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(2);
   setCur(centerX(T(S_NAME), 2), 56);
@@ -653,3 +678,31 @@ void keyboardTap(int16_t x, int16_t y) {
     nameBuf[nameLen] = 0;
   }
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvSettingsTargets(SmallTvTargets &list) {
+  if (restoreAsk) {
+    list.context = 12;
+    list.yesNo();
+  } else if (statsOpen) {
+    list.context = 13;
+    list.add(96, 412, 274, 40);
+  } else {
+    list.context = 14;
+    list.add(SET_BTN_X0, SET_BTN_Y0, SET_BTN_W, SET_BTN_H);
+    list.add(SET_BTN_X1, SET_BTN_Y0, SET_BTN_W, SET_BTN_H);
+    list.add(SET_BTN_X0, SET_BTN_Y1, SET_BTN_W, SET_BTN_H);
+    list.add(SET_BTN_X1, SET_BTN_Y1, SET_BTN_W, SET_BTN_H);
+    list.add(SET_BTN_X0, STATS_BTN_Y, STATS_BTN_W, STATS_BTN_H);
+    list.add(BRI_BTN_X, STATS_BTN_Y, BRI_BTN_W, STATS_BTN_H);
+    if (wifiHasCreds()) list.add(STATS_BTN_X1, STATS_BTN_Y, STATS_BTN_W, STATS_BTN_H);
+    list.add(TEMP_PILL_X, TEMP_PILL_Y, TEMP_PILL_W, TEMP_PILL_H);
+  }
+}
+
+void smallTvKeyboardTargets(SmallTvTargets &list) {
+  list.context = 15;
+  for (int i = 0; i < 30; ++i)
+    list.add(KB_X + i % KB_COLS * KB_W, KB_Y + i / KB_COLS * KB_H, KB_W, KB_H);
+}
+#endif

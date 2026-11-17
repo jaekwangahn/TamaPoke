@@ -77,8 +77,7 @@ static void drawGymLock(int cx, int cy) {
 #define GL_Y0 96
 #define GL_H 56
 static void renderGymList() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   bool abierta = gyRegion < pet.unlockedRegions();
   char t[48];
   snprintf(t, sizeof(t), T(S_GYMS_TITLE_FMT), T((StrId)(S_REGION_1 + gyRegion)));
@@ -165,8 +164,7 @@ static void drawTeamThumbs(const int16_t dex[3], int y) {
 }
 
 static void renderGymDetail() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   const GymPerson &p = foe();
   uint8_t type = p.type < TY_COUNT ? p.type : TY_NORMAL;
   char t[64];
@@ -262,8 +260,7 @@ static void drawFitMarks(int16_t dex, int x, int y, int w) {
 }
 
 static void renderGymTeam() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_PICK_TWO), 3), 34);
@@ -353,8 +350,7 @@ static const char *memberName(int i) {
 #define OR_Y0 92
 #define OR_H 74
 static void renderGymOrder() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   char t[64];
   if (gyLeague) snprintf(t, sizeof(t), "%s  %s", T(S_LINEUP), gtx(foe().en, foe().zh));
   else snprintf(t, sizeof(t), "%s", T(S_LINEUP));
@@ -475,8 +471,7 @@ void gymRoundDone(bool won) {
 }
 
 static void renderGymEnd() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   char t[64];
   if (!gyWon) {  // con quien se perdio, el marcador y que probar la proxima vez
     gfx->setTextColor(UI_INK);
@@ -586,3 +581,32 @@ void gymsSwipe(int dir) {
   else if (gyStage == GY_TEAM) gyStage = GY_DETAIL;
   else if (gyStage == GY_ORDER && !(gyLeague && lgMember > 0)) gyStage = GY_TEAM;  // la liga, ya empezada, sigue
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvGymTargets(SmallTvTargets &list) {
+  list.context = 0x80000 + gyStage * 4096 + gyRegion * 256 + gyPage;
+  switch (gyStage) {
+    case GY_LIST:
+      for (int i = 0; i < 8; ++i)
+        list.add(52 + i % 2 * 182, GL_Y0 + i / 2 * GL_H, 180, GL_H - 2);
+      list.add(CX - 100, GL_Y0 + 4 * GL_H, 200, 50);
+      break;
+    case GY_DETAIL:
+      list.add(CX - 100, 300, 200, 46);
+      list.add(20, 12, 426, 54);
+      break;
+    case GY_TEAM:
+      for (int i = 0; i < 6 && gyPage * 6 + i < farmCount(); ++i)
+        list.add(FT_X0 + i % 3 * FT_CELL, FT_Y0 + i / 3 * FT_CELL, FT_CELL, FT_CELL);
+      list.add(CX - 90, 340, 180, 42);
+      break;
+    case GY_ORDER:
+      for (int i = 0; i < 3; ++i) list.add(54, OR_Y0 + i * OR_H, 116, OR_H - 4);
+      list.add(CX - 90, OR_Y0 + 3 * OR_H, 180, 50);
+      break;
+    default:
+      list.add(100, 350, 266, 60);
+      break;
+  }
+}
+#endif

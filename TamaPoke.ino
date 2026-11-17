@@ -52,6 +52,17 @@
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
 #define FW_VERSION "1.18"
 
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#include "smalltv_display.h"
+#include "smalltv_ota.h"
+Arduino_ESP32SPI smallTvBus(SMALLTV_DC, GFX_NOT_DEFINED, SMALLTV_SCLK, SMALLTV_MOSI,
+                           GFX_NOT_DEFINED, VSPI, false);
+Arduino_ST7789 smallTvPanel(&smallTvBus, SMALLTV_RESET, 0, true,
+                            SmallTvDisplay::Size, SmallTvDisplay::Size);
+SmallTvDisplay smallTvDisplay(smallTvPanel);
+SmallTvDisplay *gfx = &smallTvDisplay;
+SmallTvDisplay *panel = gfx;
+#else
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
 Arduino_CO5300 *panel = new Arduino_CO5300(
@@ -60,6 +71,7 @@ Arduino_CO5300 *panel = new Arduino_CO5300(
 Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
 
 TouchDrvCST92xx touch;
+#endif
 // fuente CJK activa: de momento siempre false, la carga llegara con el
 // soporte de japones/coreano/chino (ver PR #13)
 bool gCjkFont = false;
@@ -146,6 +158,17 @@ struct Btn {
   int16_t cx, cy;
   const char *const *icon;
 };
+#if defined(TAMAPOKE_SMALLTV_PRO)
+constexpr int UI_SIDE_MARGIN = 20;
+constexpr int CARE_BUTTON_W = 100;
+constexpr int CARE_BUTTON_H = 70;
+Btn buttons[4] = {
+  { 70, 414, SPR_ICON_FOOD },
+  { 179, 414, SPR_ICON_PLAY },
+  { 287, 414, SPR_ICON_LIGHT },
+  { 396, 414, SPR_ICON_CLEAN },
+};
+#else
 Btn buttons[4] = {
   { 140, 390, SPR_ICON_FOOD },   // comer
   { 202, 404, SPR_ICON_PLAY },   // jugar
@@ -154,6 +177,7 @@ Btn buttons[4] = {
 };
 #define BTN_HALF 26  // boton de 52x52
 #define BTN_HIT 36   // radio tactil (un poco mas generoso)
+#endif
 #define FEED_X 134    // selector de comida: 3 casillas de 66 px (baya, chuche, medicina)
 #define FEED_Y 288    // y encima, si hay, otra fila con pescado y frutas (lo del ocio)
 #define FEED_H 72
@@ -170,9 +194,18 @@ static const uint16_t STARS[][2] = { {120,140},{330,120},{370,210},{95,230},{280
 bool wasPressed = false;
 // eleccion de inicial (primera partida): Bulbasaur / Charmander / Squirtle, 3 filas
 static const int16_t STARTER_DEX[3] = { 1, 4, 7 };
-#define STARTER_ROW_Y 110
-#define STARTER_ROW_H 70
-#define STARTER_ROW_GAP 8
+#if defined(TAMAPOKE_SMALLTV_PRO)
+constexpr int STARTER_X = UI_SIDE_MARGIN;
+constexpr int STARTER_ROW_Y = 90;
+constexpr int STARTER_ROW_H = 100;
+constexpr int STARTER_ROW_GAP = 12;
+#else
+constexpr int STARTER_X = 70;
+constexpr int STARTER_ROW_Y = 110;
+constexpr int STARTER_ROW_H = 70;
+constexpr int STARTER_ROW_GAP = 8;
+#endif
+constexpr int STARTER_W = LCD_WIDTH - STARTER_X * 2;
 // boton-CTA de evolucion (centrado, mitad de pantalla)
 #define EVO_BTN_W 256
 #define EVO_BTN_H 64
@@ -350,15 +383,35 @@ uint8_t gReqSize = 1;        // ultimo tamano pedido (textW lo restaura)
 bool screenKeyValid = false;  // (el renderer del host lo invalida entre escenas)
 uint32_t lastScreenKey = 0;
 
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvTouchBegin();
+constexpr uint32_t UI_ACTION_MS = 30000;
+constexpr uint32_t UI_CHOICE_MS = 30000;
+constexpr uint32_t UI_FEED_MS = 30000;
+#else
+constexpr uint32_t UI_ACTION_MS = 10000;
+constexpr uint32_t UI_CHOICE_MS = 12000;
+constexpr uint32_t UI_FEED_MS = 6000;
+#endif
+
 void setup() {
   Serial.setRxBufferSize(8192);  // la transferencia a SD llega en bloques de 2 KB
   Serial.begin(115200);
   // CRITICO: sin esto, Serial.print BLOQUEA el juego cuando no hay un
   // monitor serie abierto en el host (el bufer TX del USB CDC se llena
   // y nadie lo vacia) -> con timeout 0 los mensajes se descartan
+#if !defined(TAMAPOKE_SMALLTV_PRO)
   Serial.setTxTimeoutMs(0);
+#endif
   Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
   loadLang();  // idioma guardado (ES por defecto)
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  smallTvTouchBegin();
+  if (!gfx->begin(40000000)) {
+    Serial.println("SmallTV PRO display initialization failed");
+    for (;;) delay(1000);
+  }
+#else
   Wire.begin(IIC_SDA, IIC_SCL);
   // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
   // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
@@ -374,6 +427,7 @@ void setup() {
   // QSPI a 80MHz (por defecto 40): el flush del framebuffer es el cuello de
   // botella del fps (~56ms a 40MHz). Si el panel mostrara basura, bajar a 40M.
   if (!gfx->begin(80000000)) Serial.println("gfx->begin() fallo");
+#endif
   {  // nivel de brillo (ya desde el primer fotograma, sin fogonazo) y unidad de temperatura
     Preferences p;
     p.begin("tamapoke", true);
@@ -384,6 +438,7 @@ void setup() {
   panel->setBrightness((uint8_t)(180 * userBrightPct(userDim) / 100));
   applyLangFont();  // fuente del idioma guardado (clasica salvo CJK)
 
+#if !defined(TAMAPOKE_SMALLTV_PRO)
   touch.setPins(TP_RESET, TP_INT);
   bool touchOk = false;
   for (int i = 0; i < 3 && !touchOk; i++) {  // a veces falla al primer intento
@@ -418,6 +473,8 @@ void setup() {
   } else {
     Serial.println("QMI8658 no detectado");
   }
+
+#endif
 
   pet.begin();
   sdBegin();
@@ -508,6 +565,12 @@ void loop() {
   if (runReady && !wasRunReady) sfxPlay(SFX_DENY);
   wasRunReady = runReady;
 
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  if (smallTvOtaRebootReady()) {
+    pet.flushSave();
+    ESP.restart();
+  }
+#endif
   handleTouch();
   handleShake(now);
   handleSerial();
@@ -831,6 +894,7 @@ void updateBrightness(uint32_t now) {
 // 200 ms: despierta por el temporizador o por un toque (el INT del tactil baja). Con USB no, para
 // no perder el puerto serie de la tarjeta SD: se mira sin cache, por si se acaba de enchufar.
 void idleWait(PowerCtx c) {
+#if !defined(TAMAPOKE_SMALLTV_PRO)
   // no se duerme justo tras dibujar (el volcado DMA del frame sigue en marcha) ni con un aviso sonando
   if (lightSleepAllowed(c) && millis() - lastRender >= 100 && !audioBusy()) {
     c.usb = usbPresentNow();
@@ -859,5 +923,6 @@ void idleWait(PowerCtx c) {
     }
     return;
   }
+#endif
   delay(idleDelayMs(c));
 }

@@ -97,6 +97,200 @@ void learnFaceUp() {
   }
 }
 
+#if defined(TAMAPOKE_SMALLTV_PRO)
+static uint32_t smallTvBaseline = 0;
+
+void smallTvTouchBegin() {
+  for (int i = 0; i < 32; ++i) {
+    smallTvBaseline += touchRead(SMALLTV_TOUCH);
+    delay(8);
+  }
+  smallTvBaseline /= 32;
+  Serial.printf("SmallTV touch baseline: %lu\n", (unsigned long)smallTvBaseline);
+}
+
+static void smallTvTargets(SmallTvTargets &list) {
+  if (pet.awaitingStarter()) {
+    list.context = 1;
+    for (int i = 0; i < 3; ++i)
+      list.add(STARTER_X, STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP), STARTER_W, STARTER_ROW_H);
+  } else if (wifiPortalActive()) {
+    list.context = 2;
+    list.add(96, 352, 274, 56);
+  } else if (shopOpen) {
+    smallTvShopTargets(list);
+  } else if (farmOpen) {
+    smallTvFarmTargets(list);
+  } else if (chOpen) {
+    smallTvSportsTargets(list);
+  } else if (gymsOpen) {
+    smallTvGymTargets(list);
+  } else if (funOpen) {
+    smallTvFunTargets(list);
+  } else if (hubOpen) {
+    smallTvHubTargets(list);
+  } else if (galleryOpen) {
+    smallTvGalleryTargets(list);
+  } else if (kbOpen) {
+    smallTvKeyboardTargets(list);
+  } else if (clockOpen) {
+    smallTvSettingsTargets(list);
+  } else if (pet.ceremony) {
+    return;
+  } else if (cardOpen) {
+    list.context = 17 + cardPage;
+    if (cardPage == 0) list.add(40, 24, 386, 60);
+    list.add(96, 402, 274, 48);
+  } else if (choiceKind) {
+    if (timeLeft(choiceUntil)) {
+      list.context = 24 + choiceKind;
+      list.add(93, 206, 280, 52);
+      list.add(93, 268, 280, 52);
+    }
+  } else if (actionUntil || confirmUntil) {
+    if (timeLeft(actionUntil ? actionUntil : confirmUntil)) {
+      list.context = actionUntil ? 27 : 28;
+      list.yesNo();
+    }
+  } else if (feedMenuUntil) {
+    if (timeLeft(feedMenuUntil)) {
+      uint8_t extras[5];
+      int count = feedExtras(extras);
+      list.context = 29;
+      for (int i = 0; i < 3; ++i) list.add(FEED_X + i * 66, FEED_Y, 66, FEED_H);
+      for (int i = 0; i < count; ++i) list.add(CX - count * 33 + i * 66, FEED_Y2, 66, FEED_H);
+    }
+  } else if (reportPending) {
+    list.context = 30;
+    list.add(78, 120, 310, 150);
+  } else if (pet.vacant) {
+    smallTvVacantTargets(list);
+  } else if (pet.isEgg()) {
+    list.context = 31;
+    list.add(CX - 80, PET_CY - 80, 160, 160);
+  } else {
+    list.context = 32;
+    if (!pet.questAway()) {
+      for (int i = 0; i < 4; ++i) {
+        if ((pet.sleeping && i != 2) || (pet.sick && i == 1)) continue;
+        list.add(buttons[i].cx - CARE_BUTTON_W / 2, buttons[i].cy - CARE_BUTTON_H / 2,
+                 CARE_BUTTON_W, CARE_BUTTON_H);
+      }
+      if (pet.wantEvolveButton()) list.add(EVO_BTN_X, EVO_BTN_Y, EVO_BTN_W, EVO_BTN_H);
+      else if (pet.canRunawayNow() || pet.wantFarewellButton()) list.add(FAR_BTN_X, FAR_BTN_Y, FAR_BTN_W, FAR_BTN_H);
+      else list.add(CX - 60, PET_CY - 56, 120, 112);
+      smallTvGrassTarget(list);
+    }
+    list.add(gPtsX0 - 8, STATUS_Y - 5, gPtsX1 - gPtsX0 + 16, 28);
+  }
+}
+
+static int smallTvFocus = -1;
+static uint32_t smallTvContext = 0;
+static SmallTvTarget smallTvFocusedTarget{};
+static bool smallTvGestures = false;
+
+static void smallTvShowFocus() {
+  gfx->setSelector(!smallTvGestures && smallTvFocus >= 0 ? &smallTvFocusedTarget : nullptr,
+                   smallTvGestures ? smallTvFocus : -1);
+  gfx->flush();
+}
+
+static void smallTvClick(bool activate) {
+  if (smallTvGestures) {
+    if (!activate) {
+      smallTvFocus = (smallTvFocus + 1) % 5;
+    } else if (smallTvFocus >= 0) {
+      const int choice = smallTvFocus;
+      smallTvFocus = -1;
+      smallTvGestures = false;
+      if (choice == 0) onSwipe(-1);
+      else if (choice == 1) onSwipe(1);
+      else if (choice == 2) onSwipeV(-1);
+      else if (choice == 3) onSwipeV(1);
+      else if (mainScreenFree() && !pet.isEgg() && !pet.vacant && !pet.questAway() && !pet.ceremony)
+        actionUntil = millis() + UI_ACTION_MS;
+    }
+  } else {
+    SmallTvTargets list;
+    smallTvTargets(list);
+    if (smallTvFocus >= 0 && list.context == smallTvContext && smallTvFocus < list.count) {
+      const auto &target = list.items[smallTvFocus];
+      if (target.x != smallTvFocusedTarget.x || target.y != smallTvFocusedTarget.y ||
+          target.w != smallTvFocusedTarget.w || target.h != smallTvFocusedTarget.h)
+        smallTvFocus = -1;
+    } else {
+      smallTvFocus = -1;
+    }
+    if (list.count && !activate) {
+      smallTvFocus = (smallTvFocus + 1) % list.count;
+      smallTvContext = list.context;
+      smallTvFocusedTarget = list.items[smallTvFocus];
+    } else if (activate && smallTvFocus >= 0) {
+      const auto target = smallTvFocusedTarget;
+      smallTvFocus = -1;
+      onTap(target.x + target.w / 2, target.y + target.h / 2);
+    }
+  }
+  smallTvShowFocus();
+}
+
+void handleTouch() {
+  constexpr uint32_t debounceMs = 35;
+  constexpr uint32_t holdMs = 620;
+  constexpr uint32_t doubleMs = 340;
+  static uint32_t lastPoll = 0, changedAt = 0, pressedAt = 0, firstUp = 0;
+  static bool raw = false, pressed = false, wakeOnly = false;
+  static bool pending = false, second = false;
+
+  const uint32_t now = millis();
+  if (!smallTvBaseline || now - lastPoll < 12) return;
+  lastPoll = now;
+  const bool reading = touchRead(SMALLTV_TOUCH) < smallTvBaseline * (raw ? 91 : 85) / 100;
+  if (reading != raw) {
+    raw = reading;
+    changedAt = now;
+  }
+
+  if (raw != pressed && now - changedAt >= debounceMs) {
+    pressed = raw;
+    if (pressed) {
+      pressedAt = changedAt;
+      second = pending && pressedAt - firstUp <= doubleMs;
+      if (pending && !second) {
+        pending = false;
+        smallTvClick(false);
+      }
+      wakeOnly = screenOff || dimStage > 0;
+      if (screenOff) {
+        screenOff = false;
+        pet.screenNap(false);
+      }
+      wakeUI();
+    } else if (wakeOnly) {
+      pending = false;
+      smallTvFocus = -1;
+      smallTvGestures = false;
+      smallTvShowFocus();
+    } else if (changedAt - pressedAt >= holdMs) {
+      pending = false;
+      smallTvGestures = !smallTvGestures;
+      smallTvFocus = smallTvGestures ? 0 : -1;
+      smallTvShowFocus();
+    } else if (second) {
+      pending = false;
+      smallTvClick(true);
+    } else {
+      pending = true;
+      firstUp = changedAt;
+    }
+  }
+  if (pending && !raw && !pressed && now - firstUp > doubleMs) {
+    pending = false;
+    smallTvClick(false);
+  }
+}
+#else
 // el toque se resuelve al LEVANTAR el dedo para distinguir tap de deslizar
 void handleTouch() {
   static uint32_t lastPoll = 0;
@@ -180,6 +374,7 @@ void handleTouch() {
   }
   wasPressed = pressed;
 }
+#endif
 
 // deslizar vertical: abre/cierra la ficha del bicho
 void openClock();  // prototipo
@@ -292,7 +487,7 @@ void onTap(int16_t x, int16_t y) {
   if (pet.awaitingStarter()) {  // primera partida: elegir inicial
     for (int i = 0; i < 3; i++) {
       int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-      if (x >= 70 && x <= 396 && y >= ry && y <= ry + STARTER_ROW_H) {
+      if (x >= STARTER_X && x <= STARTER_X + STARTER_W && y >= ry && y <= ry + STARTER_ROW_H) {
         pet.chooseStarter(STARTER_DEX[i]);
         sfxPlay(SFX_TAP);
         break;
@@ -362,7 +557,7 @@ void onTap(int16_t x, int16_t y) {
   if (actionUntil) {         // dialogo de pulsacion larga: RECOGER / SOLTAR
     if (timeLeft(actionUntil) && y >= 252 && y <= 304) {
       if (x >= 118 && x <= 218) collectCurrent();
-      else if (x >= 248 && x <= 348) confirmUntil = millis() + 10000;  // soltar: confirmar
+      else if (x >= 248 && x <= 348) confirmUntil = millis() + UI_ACTION_MS;  // soltar: confirmar
     }
     actionUntil = 0;
     return;
@@ -425,22 +620,27 @@ void onTap(int16_t x, int16_t y) {
   // boton de evolucion: abre el dialogo evolucionar/mantener
   if (pet.wantEvolveButton() && x >= EVO_BTN_X && x <= EVO_BTN_X + EVO_BTN_W &&
       y >= EVO_BTN_Y && y <= EVO_BTN_Y + EVO_BTN_H) {
-    choiceKind = 1; choiceUntil = millis() + 12000;
+    choiceKind = 1; choiceUntil = millis() + UI_CHOICE_MS;
     return;
   }
   // botones de final (mismo recuadro): escapada directa; despedida abre dialogo
   if (x >= FAR_BTN_X && x <= FAR_BTN_X + FAR_BTN_W &&
       y >= FAR_BTN_Y && y <= FAR_BTN_Y + FAR_BTN_H) {
     if (pet.canRunawayNow()) { pet.startRunaway(); return; }
-    if (pet.wantFarewellButton()) { choiceKind = 2; choiceUntil = millis() + 12000; return; }
+    if (pet.wantFarewellButton()) { choiceKind = 2; choiceUntil = millis() + UI_CHOICE_MS; return; }
   }
   for (int i = 0; i < 4; i++) {
     int dx = x - buttons[i].cx, dy = y - buttons[i].cy;
-    if (dx * dx + dy * dy <= BTN_HIT * BTN_HIT) {
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    const bool hit = abs(dx) <= CARE_BUTTON_W / 2 && abs(dy) <= CARE_BUTTON_H / 2;
+#else
+    const bool hit = dx * dx + dy * dy <= BTN_HIT * BTN_HIT;
+#endif
+    if (hit) {
       Serial.printf("BTN %d\n", i);
       sfxPlay(SFX_TAP);
       if (i == 0) {
-        if (!pet.sleeping) feedMenuUntil = millis() + 6000;
+        if (!pet.sleeping) feedMenuUntil = millis() + UI_FEED_MS;
       } else if (i == 1) {
         if (!pet.sick) pet.play();  // jugar al momento (sin minijuego); enfermo no juega
       } else if (i == 2) {

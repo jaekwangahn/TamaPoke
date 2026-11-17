@@ -7,6 +7,9 @@
 #include <DNSServer.h>
 #include <WebSocketsClient.h>
 #include <Preferences.h>
+#if defined(TAMAPOKE_SMALLTV_OTA)
+#include <esp_wifi.h>
+#endif
 #include <time.h>
 #include <esp_sntp.h>
 #include "walltime.h"
@@ -41,10 +44,18 @@ static String credGet(const char *key) {
 static const char *const KEY_SSID[WIFI_SLOTS] = { "ssid", "ssid2", "ssid3" };
 static const char *const KEY_PASS[WIFI_SLOTS] = { "pass", "pass2", "pass3" };
 
+#if defined(TAMAPOKE_SMALLTV_OTA)
+static bool inheritedStation = false;
+#endif
+
 bool wifiHasCreds() {
   for (uint8_t i = 0; i < WIFI_SLOTS; i++)
     if (credGet(KEY_SSID[i]).length()) return true;
+#if defined(TAMAPOKE_SMALLTV_OTA)
+  return inheritedStation;
+#else
   return false;
+#endif
 }
 bool mcpConfigured() { return credGet("mcp").length() > 0; }
 
@@ -253,7 +264,16 @@ static bool conectar() {
       unica = i;
     }
   }
-  if (!guardadas) return false;
+  if (!guardadas) {
+#if defined(TAMAPOKE_SMALLTV_OTA)
+    if (inheritedStation && WiFi.mode(WIFI_STA)) {
+      WiFi.begin();
+      for (int i = 0; i < 150 && WiFi.status() != WL_CONNECTED; ++i) delay(100);
+      return WiFi.status() == WL_CONNECTED;
+    }
+#endif
+    return false;
+  }
   WiFi.mode(WIFI_STA);
   if (guardadas == 1) {  // una sola: como siempre, sin escanear (vale tambien para una red oculta)
     if (!probarRed(ssid[unica], pass[unica], 15000)) return false;
@@ -332,6 +352,17 @@ static bool bajarJson(const String &url, JsonDocument &doc, JsonDocument *filtro
   int code = http.GET();
   bool ok = false;
   if (code == 200) {
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    WiFiClient *stream = http.getStreamPtr();
+    if (stream) {
+      stream->setTimeout(15000);
+      DeserializationError error = filtro
+          ? deserializeJson(doc, *stream, DeserializationOption::Filter(*filtro))
+          : deserializeJson(doc, *stream);
+      ok = !error;
+      if (error) Serial.printf("json: %s\n", error.c_str());
+    }
+#else
     // Se baja entero a PSRAM y luego se analiza: leyendo directo del flujo TLS,
     // ArduinoJson veia el final antes de tiempo (IncompleteInput) en cuanto
     // el trozo siguiente tardaba en llegar.
@@ -362,6 +393,7 @@ static bool bajarJson(const String &url, JsonDocument &doc, JsonDocument *filtro
       if (e) Serial.printf("json: %s\n", e.c_str());
       free(buf);
     }
+#endif
   } else {
     Serial.printf("http %d %s\n", code, url.c_str());
   }
@@ -723,6 +755,13 @@ void netBegin() {
   if (netMx) return;
   // las credenciales se pasan siempre: que el wifi no las vuelva a escribir en la
   // NVS en cada intento (con varias redes, cada cambio era una escritura en flash)
+#if defined(TAMAPOKE_SMALLTV_OTA)
+  // Reuse the ESP32's saved station configuration if the previous app stored one.
+  if (!wifiHasCreds() && WiFi.mode(WIFI_STA)) {
+    wifi_config_t saved{};
+    inheritedStation = esp_wifi_get_config(WIFI_IF_STA, &saved) == ESP_OK && saved.sta.ssid[0];
+  }
+#endif
   WiFi.persistent(false);
   netMx = xSemaphoreCreateMutex();
   cmdQ = xQueueCreate(1, sizeof(NetCmd));

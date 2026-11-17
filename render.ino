@@ -1,6 +1,15 @@
 // render(): elige la pantalla y la dibuja; cabecera, ceremonias y botones.
 // (pestaña de TamaPoke.ino: Arduino la une al final del principal)
 
+void drawPageBackground() {
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  gfx->fillScreen(UI_BG_DAY);
+#else
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+#endif
+}
+
 // Dibuja un frame y devuelve true si lo ha volcado al panel.
 bool render() {
   // enchufado y sin tocar: reloj de espera (antes que nada: no es una pantalla "quieta")
@@ -132,6 +141,9 @@ bool render() {
     drawPoops();
     // panel inferior: base limpia para barras y botones sobre el paisaje
     gfx->fillRect(0, 312, 466, 154, gNight ? UI_BG_NIGHT : UI_BG_DAY);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    gfx->drawFastHLine(0, 312, LCD_WIDTH, gNight ? UI_INK_NIGHT : UI_TRACK);
+#endif
     drawBars();
     drawButtons();
     drawCelebration();
@@ -348,8 +360,13 @@ static void drawStatusRow() {
   setSize(2);
   int wr = rs[0] ? 18 + textW(rs, 2) : 0, wt = ts[0] ? textW(ts, 2) + 8 : 0;
   int wb = batPercent() >= 0 ? 27 : 0, wp = 18 + textW(ps, 2), gap = 10;
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const int y = STATUS_Y;
+  int x = UI_SIDE_MARGIN;
+#else
   int total = wp + (wr ? wr + gap : 0) + (wt ? wt + gap : 0) + (wb ? wb + gap : 0);
   int x = CX - total / 2, y = STATUS_Y;
+#endif
   if (wr) {
     gfx->fillTriangle(x + 8, y - 2, x + 1, y + 15, x + 15, y + 15, UI_BAR_BAD);
     gfx->fillTriangle(x + 8, y + 5, x + 4, y + 15, x + 12, y + 15, UI_BAR_WARN);
@@ -366,6 +383,11 @@ static void drawStatusRow() {
     drawBattery(x, y + 2);
     x += wb + gap;
   }
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  x = LCD_WIDTH - UI_SIDE_MARGIN - wp;
+  gfx->fillRoundRect(x - 8, y - 5, wp + 16, 28, 8,
+                    gNight ? UI_BG_NIGHT : UI_BG_DAY);
+#endif
   drawPointsBadge(x, y);
   gPtsX0 = x;
   gPtsX1 = x + wp;
@@ -376,9 +398,14 @@ void drawHeader(const char *name, uint16_t nameColor, const char *msg) {
   gfx->setTextColor(nameColor);
   // arriba la pantalla redonda solo deja ~290 px: un nombre largo (MEGA ..., apodos) baja a 2
   setSize(3);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const int available = LCD_WIDTH - 2 * UI_SIDE_MARGIN;
+  int ts = textW(name, 4) <= available ? 4 : textW(name, 3) <= available ? 3 : 2;
+#else
   int ts = textW(name, 3) <= 290 ? 3 : 2;
+#endif
   setSize(ts);
-  setCur(centerX(name, ts), ts == 3 ? 52 : 58);
+  setCur(centerX(name, ts), ts >= 3 ? 52 : 58);
   printT(name);
   gfx->setTextColor(inkColor());
   setSize(2);
@@ -569,6 +596,20 @@ void drawPet() {
     return;
   }
   int fi = flashIdxForDex(pet.speciesId);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  if (fi < 0 || pet.evolving()) {
+    const bool flash = pet.evolving() && (millis() / 300) % 2;
+    const int16_t dex = flash && pet.prevSpeciesId > 0 ? pet.prevSpeciesId : pet.speciesId;
+    if (const uint8_t *sprite = thumbs.get(dex)) {
+      const int scale = 5;
+      const int top = PET_CY - 90 - (pet.mood() == MOOD_HAPPY && (millis() / 500) % 2 ? 6 : 0);
+      drawThumbIn(sprite, CX - 90, top, scale, flash, 180);
+      if (pet.showHeart()) drawMap(SPR_HEART, 32, CX + 48, top + 16, 2, false);
+      if (timeLeft(dizzyUntil) && !pet.sleeping) drawDizzy(CX, top + 18, millis());
+      return;
+    }
+  }
+#endif
   if (fi < 0) {
     // sin SD y sin sprite de flash: aviso claro de que faltan sprites
     gfx->setTextColor(inkColor());

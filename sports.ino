@@ -565,8 +565,7 @@ void fmtMark(char *b, size_t n, uint8_t ev, float v) {
 #define MENU_Y0 82
 #define MENU_H 46
 static void renderSportsMenu() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   label(T(S_HUB_SPORTS), 36, 3, UI_INK);
   for (int i = 0; i < EV_COUNT; i++) {
     int col = i % 2, row = i / 2;
@@ -626,8 +625,7 @@ static void ranking(int orden[3]) {
 
 // torneo: podio (oro en medio, plata a la izquierda, bronce a la derecha)
 static void renderPodium() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   static const StrId MEDAL[3] = { S_GOLD, S_SILVER, S_BRONZE };
   static const uint16_t MEDAL_COL[3] = { 0xE5CC, 0xAD97, 0xB3C8 };
   static const uint16_t MEDAL_INK[3] = { 0xBC23, 0x7BF1, 0x9A86 };  // titulo: los mismos, mas oscuros (sobre el fondo claro)
@@ -659,8 +657,7 @@ static void renderPodium() {
 
 // gimnasio: quien gano esta ronda (y gyms.ino pinta el marcador de la serie encima)
 static void renderRound() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   label(chTitle, 40, 2, UI_INK);
   label(T(chRoundWon ? S_ROUND_WON : S_ROUND_LOST), 76, 3, chRoundWon ? UI_BAR_OK : UI_BAR_BAD);
   for (int i = 0; i < 2; i++) {
@@ -783,3 +780,17 @@ void sportsSwipe(int dir) {
     chStage = CH_MENU;
   }
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvSportsTargets(SmallTvTargets &list) {
+  list.context = 0x70000 + chStage;
+  if (chStage == CH_MENU) {
+    for (int i = 0; i < EV_COUNT; ++i) {
+      const bool alone = i == EV_COUNT - 1 && EV_COUNT % 2;
+      list.add(alone ? 136 : 54 + i % 2 * 184, MENU_Y0 + i / 2 * MENU_H, 174, MENU_H - 2);
+    }
+  } else if (chStage == CH_READY || chStage == CH_DONE) {
+    list.add(100, 347, 266, 66);
+  }
+}
+#endif

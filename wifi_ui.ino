@@ -4,8 +4,7 @@
 // ---------- wi-fi: configuracion y sincronizacion ----------
 
 void renderWifiPortal() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_WIFI_SETUP), 3), 120);
@@ -25,8 +24,7 @@ void renderWifiPortal() {
 
 // sincroniza con chess.com (bloquea unos segundos: aviso en pantalla mientras)
 bool runChessSync(bool manual) {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(2);
   setCur(centerX(T(S_SYNCING), 2), CY - 8);

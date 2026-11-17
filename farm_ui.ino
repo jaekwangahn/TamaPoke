@@ -46,8 +46,13 @@ void collectCurrent() {
 
 // ---------- actividades: la pagina a la izquierda de la principal ----------
 // cuatro filas: granja, torneo, gimnasios y ocio
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#define HUB_ROW_X UI_SIDE_MARGIN
+#define HUB_ROW_W (LCD_WIDTH - 2 * HUB_ROW_X)
+#else
 #define HUB_ROW_X 63
 #define HUB_ROW_W 340
+#endif
 #define HUB_ROW_H 66
 #define HUB_ROW_Y0 88
 #define HUB_ROW_STEP 74
@@ -84,8 +89,7 @@ static void hubRow(int row, uint16_t fill, const char *const *icon, bool on, con
 }
 
 void renderHub() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_HUB_TITLE), 3), 50);
@@ -277,8 +281,7 @@ void renderFarm() {
   if (farmDetail >= 0 && farmDetail < farmCount()) {  // detalle: animado, se repinta siempre
     const FarmEntry &e = farmAt(farmDetail);
     const DexEntry &d = DEX_TBL[e.speciesId];
-    gfx->fillScreen(RGB565_BLACK);
-    gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+    drawPageBackground();
     char head[40];
     snprintf(head, sizeof(head), "%s%s", e.shiny ? "*" : "", e.nick[0] ? e.nick : dexName(e.speciesId));
     gfx->setTextColor(d.accent);
@@ -333,8 +336,7 @@ void renderFarm() {
   bool avisando = toastMsg && timeLeft(toastUntil);
   if (!farmDirty && !avisando) return;
   farmDirty = avisando;  // repinta una vez mas al apagarse el aviso
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   char head[24];
   snprintf(head, sizeof(head), T(S_FARM_FMT), (unsigned)farmCount());
   gfx->setTextColor(UI_INK);
@@ -404,8 +406,7 @@ void renderAlbum() {
   bool avisando = toastMsg && timeLeft(toastUntil);
   if (!farmDirty && !avisando) return;
   farmDirty = avisando;
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   int n = memoirCount();
   char head[24];
   snprintf(head, sizeof(head), T(S_ALBUM_FMT), n);
@@ -487,3 +488,31 @@ void albumTap(int16_t x, int16_t y) {
     farmDirty = true;
   }
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvHubTargets(SmallTvTargets &list) {
+  list.context = 10;
+  for (int i = 0; i < HUB_ROWS; ++i)
+    list.add(HUB_ROW_X, HUB_ROW_Y0 + i * HUB_ROW_STEP, HUB_ROW_W, HUB_ROW_H);
+}
+
+void smallTvFarmTargets(SmallTvTargets &list) {
+  if (albumOpen) {
+    list.context = 11;
+    list.add(20, 12, 426, 56);
+  } else if (farmDetail >= 0) {
+    list.context = 0x20000 + farmDetail;
+    list.add(FARM_BTN_X, FARM_BTN_Y, FARM_BTN_W, FARM_BTN_H);
+    if (hasStatFruit()) {
+      for (int i = 0; i < 4; ++i) list.add(fruitRowX(i) - 24, FF_Y - 24, 48, 48);
+    }
+    list.add(20, 12, 426, 56);
+  } else {
+    list.context = 0x30000 + farmPage;
+    for (int i = 0; i < FARM_PER_PAGE && farmPage * FARM_PER_PAGE + i < farmCount(); ++i)
+      list.add(FARM_X0 + i % FARM_COLS * FARM_CELL, FARM_Y0 + i / FARM_COLS * FARM_CELL, FARM_CELL, FARM_CELL);
+    list.add(ALBUM_BTN_X, ALBUM_BTN_Y, ALBUM_BTN_W, ALBUM_BTN_H);
+    list.add(20, 12, 426, 56);
+  }
+}
+#endif

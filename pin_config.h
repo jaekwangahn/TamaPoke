@@ -1,5 +1,23 @@
 #pragma once
 
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#include <sdkconfig.h>
+#if !defined(CONFIG_IDF_TARGET_ESP32)
+#error "SmallTV PRO requires the classic ESP32 target"
+#endif
+
+// Classic ESP32 SmallTV PRO, ST7789V and top capacitive button.
+#define LCD_WIDTH 466
+#define LCD_HEIGHT 466
+#define SMALLTV_SCLK 18
+#define SMALLTV_MOSI 23
+#define SMALLTV_DC 2
+#define SMALLTV_RESET 4
+#define SMALLTV_BL 25
+#define SMALLTV_TOUCH 32
+
+#else
+
 // Pines oficiales de la Waveshare ESP32-S3-Touch-AMOLED-1.75
 // Fuente: github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75 (libraries/Mylibrary/pin_config.h)
 
@@ -37,3 +55,5 @@
 #define SDMMC_CMD 1
 #define SDMMC_DATA 3
 #define SDMMC_CS 41
+
+#endif

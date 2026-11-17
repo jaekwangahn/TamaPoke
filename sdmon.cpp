@@ -1,7 +1,7 @@
 #include "sdmon.h"
 #include "pin_config.h"
 #include <FS.h>
-#include <SD_MMC.h>
+#include "game_storage.h"
 
 bool sdReady = false;
 bool sdDirty = false;
@@ -15,16 +15,16 @@ bool PmdMon::load(uint16_t dexNum, bool shiny, bool mega) {
   char path[28];
   const char *pre = mega ? "m" : "p";
   snprintf(path, sizeof(path), "/mons/%s%s%03u.bin", pre, shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = gameFiles.open(path, FILE_READ);
   if (!f && shiny) {  // sin shiny PMD: usa el normal
     snprintf(path, sizeof(path), "/mons/%s%03u.bin", pre, dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = gameFiles.open(path, FILE_READ);
   }
   if (!f) return false;
 
   uint32_t size = f.size();
   if (size < 7 || size > 3UL * 1024 * 1024) { f.close(); return false; }
-  blob = (uint8_t *)ps_malloc(size);
+  blob = (uint8_t *)storageAlloc(size);
   if (!blob || f.read(blob, size) != size || memcmp(blob, "TPK2", 4) != 0) {
     if (blob) { free(blob); blob = nullptr; }
     f.close();
@@ -95,39 +95,59 @@ void PmdMon::unload() {
   loaded = false;
 }
 
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#include <miniz.h>
+
+extern "C" const uint8_t smallTvThumbsBegin[];
+extern "C" const uint8_t smallTvThumbsEnd[];
+#endif
+
 void SdThumbs::unload() {
-  if (data) { free(data); data = nullptr; }
+#if !defined(TAMAPOKE_SMALLTV_PRO)
+  free(const_cast<uint8_t *>(data));
+#endif
+  data = nullptr;
   loaded = false;
   count = 0;
   size = 0;
 }
 
 bool SdThumbs::load() {
-  unload();  // recargar sin fugar el blob anterior
+  unload();
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  data = smallTvThumbsBegin;
+  const uint32_t sz = reinterpret_cast<uintptr_t>(smallTvThumbsEnd) -
+                      reinterpret_cast<uintptr_t>(smallTvThumbsBegin);
+#else
   if (!sdReady) return false;
-  File f = SD_MMC.open("/mons/thumbs.bin", FILE_READ);
+  File f = gameFiles.open("/mons/thumbs.bin", FILE_READ);
   if (!f) {
     Serial.println("sin thumbs.bin (galeria sin miniaturas)");
     return false;
   }
-  uint32_t sz = f.size();
-  // acota el tamano: evita un ps_malloc absurdo con un archivo corrupto
+  const uint32_t sz = f.size();
   if (sz < 10 || sz > 2UL * 1024 * 1024) {
     Serial.println("thumbs.bin invalido (tamano)");
-    f.close();
     return false;
   }
-  data = (uint8_t *)ps_malloc(sz);
-  if (!data || f.read(data, sz) != sz || memcmp(data, "TPTH", 4) != 0) {
-    Serial.println("thumbs.bin invalido");
-    if (data) { free(data); data = nullptr; }
-    f.close();
+  uint8_t *bytes = static_cast<uint8_t *>(storageAlloc(sz));
+  if (!bytes || f.read(bytes, sz) != sz) {
+    free(bytes);
     return false;
   }
-  f.close();
+  data = bytes;
+#endif
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const char *magic = "TPZ1";
+#else
+  const char *magic = "TPTH";
+#endif
+  if (sz < 10 || memcmp(data, magic, 4) != 0) {
+    unload();
+    return false;
+  }
   memcpy(&count, data + 4, 2);
-  // la tabla de offsets (uno por especie) debe caber entera en lo leido
-  if ((uint32_t)6 + 4UL * count > sz) {
+  if (6 + 4UL * count > sz) {
     Serial.println("thumbs.bin invalido (tabla de offsets)");
     unload();
     return false;
@@ -144,23 +164,72 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   memcpy(&off, data + 6 + 4 * (dex - 1), 4);
   // 0 (o cualquier offset dentro de la cabecera) = especie sin miniatura
   if (off < 6 + 4UL * count) return nullptr;
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  constexpr size_t room = 2048;
+  struct Thumbnail {
+    int16_t dex = 0;
+    uint8_t pixels[room];
+  };
+  static Thumbnail cache[2];
+  static int next = 0;
+  static tinfl_decompressor decoder;
+
+  for (int i = 0; i < 2; ++i) {
+    if (cache[i].dex == dex) {
+      next = 1 - i;
+      return cache[i].pixels;
+    }
+  }
+  if (off > size - 2) return nullptr;
+  uint16_t compressedSize;
+  memcpy(&compressedSize, data + off, 2);
+  if (!compressedSize || compressedSize > size - off - 2) return nullptr;
+  Thumbnail &entry = cache[next];
+  entry.dex = 0;
+  tinfl_init(&decoder);
+  size_t input = compressedSize;
+  size_t output = room;
+  auto status = tinfl_decompress(&decoder, data + off + 2, &input,
+                                 entry.pixels, entry.pixels, &output,
+                                 TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+  if (status != TINFL_STATUS_DONE || output < 3 ||
+      output != 3u + 2u * entry.pixels[2] + entry.pixels[0] * entry.pixels[1]) return nullptr;
+  entry.dex = dex;
+  next = 1 - next;
+  return entry.pixels;
+#else
   // el offset viene del fichero sin comprobar: sin esto, un thumbs.bin truncado
   // o corrupto hacia leer fuera de la reserva de PSRAM
   if (off > size - 3) return nullptr;  // la cabecera w,h,palCount debe caber (size >= 10 siempre)
   uint32_t need = 3 + (uint32_t)data[off + 2] * 2 + (uint32_t)data[off] * data[off + 1];
   if (need > size || off > size - need) return nullptr;  // y el blob entero tambien
   return data + off;
+#endif
 }
 
 bool sdBegin() {
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#if defined(TAMAPOKE_SMALLTV_OTA)
+  sdReady = LittleFS.begin(false);
+#else
+  sdReady = LittleFS.begin(true);
+#endif
+  if (sdReady) {
+    Serial.printf("LittleFS: %u KB\n", (unsigned)(LittleFS.totalBytes() / 1024));
+    gameFiles.mkdir("/mons");
+  } else {
+    Serial.println("LittleFS mount failed");
+  }
+#else
   SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);
   sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */, true /* formatea si no monta */);
   if (sdReady) {
     Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
-    SD_MMC.mkdir("/mons");
+    gameFiles.mkdir("/mons");
   } else {
     Serial.println("SD no detectada (el juego usa los sprites de flash)");
   }
+#endif
   return sdReady;
 }
 
@@ -170,10 +239,10 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
 
   char path[24];
   snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = gameFiles.open(path, FILE_READ);
   if (!f && shiny) {  // sin variante shiny: usa la normal
     snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = gameFiles.open(path, FILE_READ);
   }
   if (!f) {
     Serial.printf("no existe %s\n", path);
@@ -203,7 +272,7 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
   }
 
   uint32_t size = (uint32_t)w * h * frames;
-  data = (uint8_t *)ps_malloc(size);
+  data = (uint8_t *)storageAlloc(size);
   if (!data) {
     Serial.println("sin PSRAM para el sprite");
     f.close();
@@ -265,8 +334,8 @@ bool sdSerialCommand(const String &line) {
     // que quedo a medias lo alargaba en vez de reemplazarlo: quedaba un sprite
     // corrupto y mas grande que el original. Importa mas desde que el instalador
     // reanuda transferencias cortadas, porque reintenta justo los que fallaron.
-    if (SD_MMC.exists(path)) SD_MMC.remove(path);
-    File f = SD_MMC.open(path, FILE_WRITE);
+    if (gameFiles.exists(path)) gameFiles.remove(path);
+    File f = gameFiles.open(path, FILE_WRITE);
     if (!f) {
       Serial.println("ERR");
       return true;
@@ -292,11 +361,17 @@ bool sdSerialCommand(const String &line) {
     Serial.println(remaining == 0 ? "DONE" : "ERR");
     return true;
   } else if (line == "SDINFO") {  // diagnostico remoto de "no me reconoce la SD"
-    Serial.printf("total=%llu used=%llu\n", SD_MMC.totalBytes(), SD_MMC.usedBytes());
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    auto &storage = LittleFS;
+#else
+    auto &storage = SD_MMC;
+#endif
+    Serial.printf("total=%llu used=%llu\n", (unsigned long long)storage.totalBytes(),
+                  (unsigned long long)storage.usedBytes());
     Serial.println("DONE");
     return true;
   } else if (line == "LS") {
-    File dir = SD_MMC.open("/mons");
+    File dir = gameFiles.open("/mons");
     if (dir) {
       File e;
       while ((e = dir.openNextFile())) {
@@ -317,7 +392,7 @@ bool SdBg::load(int r, uint8_t luz) {
   if (!sdReady || r < 0) return false;
   char path[24];
   snprintf(path, sizeof(path), "/mons/bg%d.bin", r + 1);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = gameFiles.open(path, FILE_READ);
   if (!f) return false;
   uint8_t head[8];
   uint16_t fw = 0, fh = 0;
@@ -333,7 +408,7 @@ bool SdBg::load(int r, uint8_t luz) {
   }
   if (!px || (uint32_t)w * h != n) {
     if (px) free(px);
-    px = (uint16_t *)ps_malloc(n * 2);
+    px = (uint16_t *)storageAlloc(n * 2);
     if (!px) { f.close(); w = h = 0; return false; }
   }
   bool ok = f.read((uint8_t *)px, n * 2) == n * 2;

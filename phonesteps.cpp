@@ -1,4 +1,5 @@
 #include "phonesteps.h"
+#include "smalltv_ota.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -50,6 +51,9 @@ void phoneStepsLoop() {
     phoneStepsCode();
     srv = new WebServer(80);
     srv->on("/steps", HTTP_GET, pasos);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    smallTvOtaRoutes(*srv);
+#endif
     srv->onNotFound([] { srv->send(200, "text/plain", "TamaPoke"); });
     srv->begin();
     if (MDNS.begin("tamapoke")) MDNS.addService("http", "tcp", 80);

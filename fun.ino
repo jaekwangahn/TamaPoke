@@ -254,8 +254,7 @@ static void timeLeftText(char *b, size_t n, uint32_t secs, bool corto = false) {
 #define FL_W 168
 #define FL_H 124
 static void renderFunList() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   char t[40];
   snprintf(t, sizeof(t), T(S_FUN_TITLE_FMT), (long)pet.points);
   funHeader(t, UI_INK);
@@ -339,8 +338,7 @@ static void funListTap(int16_t x, int16_t y) {
 #define FP_Y0 120
 #define FP_CELL 92
 static void renderFunPick() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_WHO_GOES), 3), 40);
@@ -716,8 +714,7 @@ static void doQuest() {
 // ---------- lo que salio ----------
 
 static void renderFunLoot() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(fnLootTitle), 3), 70);
@@ -793,6 +790,31 @@ void funTap(int16_t x, int16_t y) {
       else questTap(x, y);
   }
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvFunTargets(SmallTvTargets &list) {
+  list.context = 0x90000 + fnStage * 4096 + fnAsk * 256 + fnAct * 32 + fnPage;
+  if (fnAsk) {
+    list.yesNo();
+  } else if (fnStage == FN_LIST) {
+    for (int i = 0; i < 4; ++i)
+      list.add(FL_X0 + i % 2 * (FL_W + 8), FL_Y0 + i / 2 * (FL_H + 8), FL_W, FL_H);
+  } else if (fnStage == FN_PICK) {
+    for (int i = 0; i < 6 && fnPage * 6 + i < fnCandN; ++i)
+      list.add(FP_X0 + i % 3 * FP_CELL, FP_Y0 + i / 3 * FP_CELL, FP_CELL, FP_CELL);
+  } else if (fnStage == FN_LOOT) {
+    list.add(100, 360, 266, 62);
+  } else if (fnAct == FUN_GARDEN) {
+    for (int i = 0; i < GARDEN_PLOTS; ++i) list.add(plotX(i), GD_Y, GD_W, GD_BTN + 40 - GD_Y);
+  } else if (fnAct == FUN_FISH && fsStage != FS_IDLE) {
+    list.add(106, 96, 254, 65);
+  } else if (fnAct == FUN_MINE && mnRock) {
+    list.add(MN_X - MN_R, MN_Y - MN_R, 2 * MN_R, 2 * MN_R);
+  } else {
+    list.add(CX - 100, 360, 200, 46);
+  }
+}
+#endif
 
 // a la derecha: atras (la lista; desde la lista, a actividades). Pescando o con la piedra a
 // medias no se sale sin querer; en la granja, a la izquierda, la pagina siguiente

@@ -1,3 +1,15 @@
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#include "audio.h"
+
+void audioBegin() {}
+void sfxPlay(uint8_t) {}
+void audioSetEnabled(bool) {}
+bool audioEnabled() { return false; }
+void audioSetSleeping(bool) {}
+bool audioBusy() { return false; }
+void audioSetIdle(bool) {}
+
+#else
 #include "audio.h"
 #include "pin_config.h"
 #include <Arduino.h>
@@ -218,3 +230,5 @@ void audioSetIdle(bool idle) {
   gIdle = idle;
   updateAmplifierPower();  // tambien cuando vence el mantenimiento de un aviso
 }
+
+#endif

@@ -1,7 +1,7 @@
 #include "farm.h"
 #include "sdmon.h"
 #include <FS.h>
-#include <SD_MMC.h>
+#include "game_storage.h"
 
 // ~24 KB: en PSRAM (se reserva en farmLoad), la RAM interna la necesitan TLS y Wi-Fi
 static FarmEntry *entries = nullptr;
@@ -20,7 +20,7 @@ static void setBit(Pet &p, int16_t dex, bool on) {
 // v3 (actual), v2 (sin farmEpoch) o v1 (tampoco bornEpoch): las viejas son mas
 // cortas y lo que falta queda en 0
 static bool readRec(const char *path, PetRec &r) {
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = gameFiles.open(path, FILE_READ);
   if (!f) return false;
   memset(&r, 0, sizeof(r));
   size_t n = f.size();
@@ -32,7 +32,7 @@ static bool readRec(const char *path, PetRec &r) {
 }
 
 static bool writeRec(const char *path, const PetRec &r) {
-  File f = SD_MMC.open(path, FILE_WRITE);
+  File f = gameFiles.open(path, FILE_WRITE);
   if (!f) return false;
   bool ok = f.write((const uint8_t *)&r, sizeof(r)) == sizeof(r);
   f.close();
@@ -80,10 +80,10 @@ bool farmLoad(Pet &p) {
   count = 0;
   memset(p.farmReg, 0, sizeof(p.farmReg));
   if (!sdReady) return false;
-  if (!entries) entries = (FarmEntry *)ps_malloc(PET_DEX_MAX * sizeof(FarmEntry));
+  if (!entries) entries = (FarmEntry *)storageAlloc(PET_DEX_MAX * sizeof(FarmEntry));
   if (!entries) return false;
-  SD_MMC.mkdir("/farm");
-  File dir = SD_MMC.open("/farm");
+  gameFiles.mkdir("/farm");
+  File dir = gameFiles.open("/farm");
   if (!dir) return false;
   for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
     char path[32];
@@ -113,7 +113,7 @@ bool farmPut(Pet &p, const PetRec &r) {
   char path[32];
   farmPath(path, sizeof(path), r.speciesId);
   if (!writeRec(path, r)) {
-    SD_MMC.remove(path);
+    gameFiles.remove(path);
     return false;
   }
   indexPut(entryOf(r));
@@ -133,7 +133,7 @@ bool farmTake(Pet &p, int16_t dex, PetRec &out) {
   char path[32];
   farmPath(path, sizeof(path), dex);
   if (!readRec(path, out)) return false;
-  SD_MMC.remove(path);
+  gameFiles.remove(path);
   indexDel(dex);
   setBit(p, dex, false);
   return true;

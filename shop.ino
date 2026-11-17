@@ -251,8 +251,7 @@ void renderShop() {
   bool avisando = toastMsg && timeLeft(toastUntil);
   if (!shopDirty && !avisando) return;
   shopDirty = avisando;  // repinta una vez mas al apagarse el aviso
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   char head[32];
   if (shopPage == 0) snprintf(head, sizeof(head), T(S_SHOP_FMT), (long)pet.points);
   else snprintf(head, sizeof(head), "%s", T(shopPage == 1 ? S_BAG : shopPage == 2 ? S_REAP : S_ACCESSORIES));
@@ -388,3 +387,25 @@ void vacantTap(int16_t x, int16_t y) {
   else if (rows[i] == VAC_REGION) pet.hatchRegionEgg();
   else if (!pet.hatchEgg(rows[i])) toast(T(S_NONE_LEFT));
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvShopTargets(SmallTvTargets &list) {
+  list.context = 0x60000 + shopPage * 32 + shopAsk + 1;
+  if (shopAsk >= 0) {
+    list.yesNo();
+    return;
+  }
+  const int counts[] = { SHOP_ITEMS, SHOP_ITEMS, FUN_ITEMS, ACC_COUNT };
+  for (int i = 0; i < counts[shopPage] && i < 10; ++i)
+    list.add(SHOP_X0 + i % 2 * SHOP_W, SHOP_Y0 + i / 2 * SHOP_H, SHOP_W, SHOP_H);
+  list.add(20, 12, 426, 56);
+}
+
+void smallTvVacantTargets(SmallTvTargets &list) {
+  list.context = 16;
+  int8_t rows[10];
+  const int n = vacRows(rows);
+  for (int i = 0; i < n; ++i)
+    list.add(VAC_X, vacY0(n) + i * vacStep(n), VAC_W, vacStep(n) - 4);
+}
+#endif

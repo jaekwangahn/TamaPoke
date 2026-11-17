@@ -931,24 +931,34 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
 
 // primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
 void renderStarterSelect() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   const char *t = T(S_CHOOSE_STARTER);
   gfx->setTextColor(UI_INK);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const int titleSize = textW(t, 3) <= STARTER_W ? 3 : 2;
+  setSize(titleSize);
+  setCur(centerX(t, titleSize), 36);
+#else
   setSize(2);
   setCur(centerX(t, 2), 68);
+#endif
   printT(t);
   for (int i = 0; i < 3; i++) {
     int16_t d = STARTER_DEX[i];
     const DexEntry &de = DEX_TBL[d];
     int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-    gfx->fillRoundRect(70, ry, 326, STARTER_ROW_H, 14, lerp565(de.accent, UI_WHITE, 6, 8));
-    gfx->drawRoundRect(70, ry, 326, STARTER_ROW_H, 14, de.accent);
+    gfx->fillRoundRect(STARTER_X, ry, STARTER_W, STARTER_ROW_H, 14, lerp565(de.accent, UI_WHITE, 6, 8));
+    gfx->drawRoundRect(STARTER_X, ry, STARTER_W, STARTER_ROW_H, 14, de.accent);
     const uint8_t *th = thumbs.get(d);     // miniatura del inicial (si la SD esta lista)
-    if (th) drawThumb(th, 76, ry - 5, 3, false);
+    if (th) drawThumb(th, STARTER_X + 6, ry + (STARTER_ROW_H - 80) / 2, 3, false);
     gfx->setTextColor(UI_INK);
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    setSize(4);
+    setCur(STARTER_X + 106, ry + 36);
+#else
     setSize(3);
     setCur(178, ry + 24);
+#endif
     printT(dexName(d));
   }
   gfx->flush();
@@ -1004,3 +1014,9 @@ bool grassTap(int16_t x, int16_t y) {
   Serial.printf("hierba: %s\n", grassMsg);
   return true;
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvGrassTarget(SmallTvTargets &list) {
+  if (grassShown()) list.add(grassX() - 24, GRASS_GROUND - 38, 48, 48);
+}
+#endif

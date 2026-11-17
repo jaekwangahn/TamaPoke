@@ -1,3 +1,35 @@
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#include "rtcbat.h"
+#include <atomic>
+#include <esp_timer.h>
+
+static std::atomic<uint32_t> bootEpoch{0};
+
+bool rtcBegin() { return true; }
+
+uint32_t rtcEpoch() {
+  const uint32_t base = bootEpoch.load();
+  return base ? base + esp_timer_get_time() / 1000000 : 0;
+}
+
+void rtcSetEpoch(uint32_t epoch) {
+  bootEpoch.store(epoch - esp_timer_get_time() / 1000000);
+}
+
+bool batBegin() { return false; }
+void pmuEnablePanel() {}
+void batSetPollMs(uint32_t) {}
+int batPercent() { return -1; }
+bool batCharging() { return false; }
+int batMillivolts() { return 0; }
+bool batShouldShutdown() { return false; }
+void batPowerOff() {}
+bool usbPresent() { return true; }
+bool usbPresentNow() { return true; }
+void pwrSetup() {}
+bool pwrShortPressed() { return false; }
+
+#else
 #include "batcurve.h"
 #include "rtcbat.h"
 #include "pin_config.h"  // define XPOWERS_CHIP_AXP2101
@@ -120,3 +152,5 @@ bool pwrShortPressed() {
   if (hit) pmu.clearIrqStatus();
   return hit;
 }
+
+#endif

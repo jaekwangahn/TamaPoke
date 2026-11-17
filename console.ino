@@ -285,6 +285,15 @@ void handleSerial() {
     Serial.println("DONE");
   } else if (line == "SHOT") {  // captura de pantalla: "SHOT w h\n" + w*h*2 bytes RGB565 (para revisar en el PC)
     render();  // un frame fresco en el lienzo
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    Serial.printf("SHOT %d %d\n", SmallTvDisplay::Size, SmallTvDisplay::Size);
+    uint16_t row[SmallTvDisplay::Size];
+    for (int y = 0; y < SmallTvDisplay::Size; ++y) {
+      gfx->readRow(y, row);
+      Serial.write(reinterpret_cast<const uint8_t *>(row), sizeof(row));
+    }
+    Serial.flush();
+#else
     uint16_t *fb = gfx->getFramebuffer();
     Serial.setTxTimeoutMs(500);  // aqui si se espera al PC (si no, se pierden trozos)
     Serial.printf("SHOT %d %d\n", LCD_WIDTH, LCD_HEIGHT);
@@ -298,6 +307,7 @@ void handleSerial() {
     }
     Serial.flush();
     Serial.setTxTimeoutMs(0);
+#endif
     Serial.println("DONE");
   } else if (line.startsWith("MCPURL ")) {  // punto MCP sin pasar por el portal (pruebas; "-" lo borra)
     String u = line.substring(7);

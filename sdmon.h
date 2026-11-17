@@ -47,7 +47,7 @@ struct PmdMon {
 // miniaturas de la galeria (thumbs.bin entero en PSRAM)
 struct SdThumbs {
   bool loaded = false;
-  uint8_t *data = nullptr;
+  const uint8_t *data = nullptr;
   uint16_t count = 0;
   uint32_t size = 0;  // bytes leidos: acota los offsets del fichero
   bool load();

@@ -567,10 +567,17 @@ void drawPoops() {
 }
 
 void drawBars() {
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  drawBar(UI_SIDE_MARGIN, 327, T(S_BAR_FOOD), pet.fullness);
+  drawBar(CX + 8, 327, T(S_BAR_JOY), pet.joy);
+  drawBar(UI_SIDE_MARGIN, 354, T(S_BAR_ENE), pet.energy);
+  drawBar(CX + 8, 354, T(S_BAR_HYG), pet.hygiene);
+#else
   drawBar(78, 318, T(S_BAR_FOOD), pet.fullness);
   drawBar(244, 318, T(S_BAR_JOY), pet.joy);
   drawBar(78, 346, T(S_BAR_ENE), pet.energy);
   drawBar(244, 346, T(S_BAR_HYG), pet.hygiene);
+#endif
 }
 
 // Separacion entre la etiqueta y su barra en la fila de necesidades. Estaba fija
@@ -597,10 +604,14 @@ void drawBar(int x, int y, const char *label, uint8_t val) {
   setCur(x, y);
   printT(label);
   int gap = barLabelGap();
+#if defined(TAMAPOKE_SMALLTV_PRO)
+  const int bw = CX - UI_SIDE_MARGIN - 8 - gap;
+#else
   // las dos columnas empiezan en 78 y 244: la barra de la primera tiene que
   // acabar antes de la etiqueta de la segunda, y ambas se pintan igual de anchas
   int bw = 232 - (78 + gap);
   if (bw > 100) bw = 100;   // con etiquetas latinas sale 100, como estaba
+#endif
   int bx = x + gap, bh = 15;
   uint16_t fill = (val >= 50) ? UI_BAR_OK : (val >= 25) ? UI_BAR_WARN : UI_BAR_BAD;
   gfx->fillRoundRect(bx, y, bw, bh, 4, UI_TRACK);
@@ -611,10 +622,19 @@ void drawBar(int x, int y, const char *label, uint8_t val) {
 void drawButtons() {
   for (int i = 0; i < 4; i++) {
     bool off = (pet.sleeping && i != 2) || (pet.sick && i == 1);  // durmiendo solo LUZ; enfermo no juega
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    const int bx = buttons[i].cx - CARE_BUTTON_W / 2;
+    const int by = buttons[i].cy - CARE_BUTTON_H / 2;
+    const uint16_t fill = off ? UI_TRACK : UI_WHITE;
+    gfx->fillRoundRect(bx, by, CARE_BUTTON_W, CARE_BUTTON_H, 10, fill);
+    gfx->drawRoundRect(bx, by, CARE_BUTTON_W, CARE_BUTTON_H, 10, inkColor());
+    drawMap(buttons[i].icon, 16, buttons[i].cx - 24, buttons[i].cy - 24, 3, off);
+#else
     int bx = buttons[i].cx - BTN_HALF, by = buttons[i].cy - BTN_HALF;
     if (!pet.sleeping) gfx->fillRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, 14, UI_WHITE);
     gfx->drawRoundRect(bx, by, 2 * BTN_HALF, 2 * BTN_HALF, 14, inkColor());
     if (!off) drawMap(buttons[i].icon, 16, buttons[i].cx - 16, buttons[i].cy - 16, 2, false);
+#endif
   }
 }
 

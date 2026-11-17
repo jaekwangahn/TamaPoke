@@ -3,12 +3,21 @@
 
 // ---------- galeria pokedex ----------
 
+#define THUMB_CELL 80
+#if defined(TAMAPOKE_SMALLTV_PRO)
+#define GAL_X (CX - 2 * GAL_CELL)
+#define GAL_Y 68
+#define GAL_CELL 98
+#define GAL_ROW 82
+#else
 #define GAL_X 73
 #define GAL_Y 84
 #define GAL_CELL 80
+#define GAL_ROW GAL_CELL
+#endif
 
 // dibuja una miniatura centrada en su celda; sil=true la pinta en tinta
-void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) { drawThumbIn(b, x, y, s, sil, GAL_CELL); }
+void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) { drawThumbIn(b, x, y, s, sil, THUMB_CELL); }
 
 // centrada en una casilla de `cell` px
 void drawThumbIn(const uint8_t *b, int x, int y, int s, bool sil, int cell) {
@@ -29,8 +38,7 @@ void drawThumbIn(const uint8_t *b, int x, int y, int s, bool sil, int cell) {
 
 void renderGallery() {
   if (galleryDetail) {  // vista detalle: se redibuja siempre (animada)
-    gfx->fillScreen(RGB565_BLACK);
-    gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+    drawPageBackground();
     const DexEntry &d = DEX_TBL[galleryDetail];
     bool reg = galleryShowAll || pet.isRegistered(galleryDetail);
     char head[32];
@@ -49,7 +57,7 @@ void renderGallery() {
       drawPmdActM(galleryPmd, PMD_IDLE, CX, 300, reg ? millis() : 0, true, !reg, 6);
     } else {
       const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL, 135, 4, !reg);
+      if (t) drawThumb(t, CX - THUMB_CELL, 135, 4, !reg);
     }
     if (reg) {  // su tipo, sus stats de especie y en que pruebas del torneo destaca
       uint8_t ty = typeOf(galleryDetail);
@@ -85,8 +93,7 @@ void renderGallery() {
   if (!galleryDirty) return;  // la rejilla es estatica
   galleryDirty = false;
 
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+  drawPageBackground();
   drawRegionDots();
   if (!galleryGrid) {
     renderRegionCover();
@@ -108,10 +115,16 @@ void renderGallery() {
     for (int c = 0; c < 4; c++) {
       int16_t dex = rg.first + galleryPage * 16 + r * 4 + c;
       if (dex > rg.last) break;
-      int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL;
+      int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_ROW;
+#if defined(TAMAPOKE_SMALLTV_PRO)
+      gfx->fillRoundRect(x + 2, y + 2, GAL_CELL - 4, GAL_ROW - 4, 8, UI_WHITE);
+      const int spriteInset = (GAL_CELL - THUMB_CELL) / 2;
+#else
+      const int spriteInset = 0;
+#endif
       const uint8_t *t = thumbs.get(dex);
       if (t) {
-        drawThumb(t, x, y, 2, !galleryShowAll && !pet.isRegistered(dex));
+        drawThumb(t, x + spriteInset, y, 2, !galleryShowAll && !pet.isRegistered(dex));
         if (pet.isShinyRegistered(dex)) {
           gfx->setTextColor(UI_BAR_WARN);
           setSize(2);
@@ -280,10 +293,29 @@ void galleryTap(int16_t x, int16_t y) {
   }
   // mismo motivo que en el teclado: filtrar antes de dividir
   if (x < GAL_X || y < GAL_Y) return;
-  int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL;
+  int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_ROW;
   if (c > 3 || r > 3) return;
   int16_t dex = REGIONS[galleryRegion].first + galleryPage * 16 + r * 4 + c;
   if (dex > REGIONS[galleryRegion].last) return;
   galleryDetail = dex;
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
 }
+
+#if defined(TAMAPOKE_SMALLTV_PRO)
+void smallTvGalleryTargets(SmallTvTargets &list) {
+  if (galleryDetail) {
+    list.context = 0x40000 + galleryDetail;
+    list.add(96, 384, 274, 44);
+    return;
+  }
+  list.context = 0x50000 + galleryRegion * 100 + galleryPage * 2 + galleryGrid;
+  if (galleryGrid) {
+    const auto &region = REGIONS[galleryRegion];
+    for (int i = 0; i < 16 && region.first + galleryPage * 16 + i <= region.last; ++i)
+      list.add(GAL_X + i % 4 * GAL_CELL, GAL_Y + i / 4 * GAL_ROW, GAL_CELL, GAL_ROW);
+  } else if (galleryShowAll || galleryRegion < pet.unlockedRegions()) {
+    list.add(CX - COVER_W / 2, COVER_Y, COVER_W, COVER_H);
+  }
+  list.add(20, 12, 426, 54);
+}
+#endif

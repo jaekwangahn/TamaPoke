@@ -148,7 +148,11 @@ static uint32_t screenKey() {
     for (int i = 0; i < nameLen; i++) h = mixKey(h, (uint8_t)nameBuf[i]);
   } else if (clockOpen) {
     h = mixKey(h, pet.lastSeenEpoch / 60);  // la hora que se enseña
+#if defined(TAMAPOKE_SMALLTV_PRO)
+    h = mixKey(h, smallTvOtaPin());
+#else
     h = mixKey(h, audioEnabled());
+#endif
     h = mixKey(h, userDim);
     h = mixKey(h, tempF);
     h = mixKey(h, gLang);
