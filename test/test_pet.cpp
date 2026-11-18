@@ -168,7 +168,7 @@ TEST(feed, dormido_o_huevo_no_come) {
 }
 
 // ---------------------------------------------------------------- tick
-TEST(tick, despierto_baja_comida_2_y_energia_1_por_minuto) {
+TEST(tick, despierto_baja_comida_2_por_minuto_y_energia_1_cada_2_minutos) {
   Pet p;
   makePet(p, 4);
   setStats(p, 100, 100, 100, 100);
@@ -177,7 +177,7 @@ TEST(tick, despierto_baja_comida_2_y_energia_1_por_minuto) {
   advance(p, 10);
   mockClearForcedRandom();
   CHECK_EQ(p.fullness, (uint8_t)80);
-  CHECK_EQ(p.energy, (uint8_t)90);
+  CHECK_EQ(p.energy, (uint8_t)95);
   CHECK_EQ(p.hygiene, (uint8_t)90);
   CHECK_EQ(p.joy, (uint8_t)90);
   CHECK_EQ(p.ageMinutes, (uint32_t)10);
@@ -1720,7 +1720,7 @@ TEST(weather, la_nieve_da_frio_salvo_a_los_de_hielo) {
   makePet(p, 1);  // BULBASAUR
   p.setWeather(PW_SNOW);
   CHECK(p.feelsCold());
-  CHECK_EQ(tras10min(1, PW_SNOW, true), (uint8_t)(tras10min(1, PW_NONE, true) - 2));
+  CHECK_EQ(tras10min(1, PW_SNOW, true), (uint8_t)(tras10min(1, PW_NONE, true) - 1));
   Pet hielo;
   makePet(hielo, 144);  // ARTICUNO (nieve)
   hielo.setWeather(PW_SNOW);
@@ -2594,10 +2594,10 @@ static uint8_t trasMinutos(uint8_t tra, uint8_t trs, bool energia, int min) {
 }
 
 TEST(ability, el_aguante_frena_la_energia) {
-  // 100 minutos: sin aguante baja 100; con 100 de aguante (50%) baja 50
-  CHECK_EQ(trasMinutos(0, 0, true, 60), (uint8_t)35);
-  // con 100 de aguante, de los minutos 1..60 no baja en 1..49: baja 11
-  CHECK_EQ(trasMinutos(100, 0, true, 60), (uint8_t)(95 - 11));
+  // 60 minutes: 60 eligible drains cost 30 energy.
+  CHECK_EQ(trasMinutos(0, 0, true, 60), (uint8_t)65);
+  // At 50% stamina, 11 eligible drains cost five whole points.
+  CHECK_EQ(trasMinutos(100, 0, true, 60), (uint8_t)(95 - 5));
   Pet p;
   makePet(p, 4);
   p.trAtk = 60;

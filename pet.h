@@ -486,6 +486,7 @@ public:
   void flushSave();
 
 private:
+  bool energyHalfPending = false;
   Preferences prefs;
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;

@@ -67,6 +67,7 @@ void Pet::newEgg(uint8_t kind) {
   fullness = 80;
   joy = 80;
   energy = 80;
+  energyHalfPending = false;
   hygiene = 100;
   poops = 0;
   ageMinutes = 0;
@@ -177,14 +178,21 @@ void Pet::tick() {
 
   if (ageMinutes % MINUTES_PER_LEVEL == 0) sfxPlay(SFX_LEVEL);  // subio de nivel (despierto)
 
+  // Accumulate half points so even isolated one-point drains are halved.
+  auto drainHalfEnergy = [this]() {
+    if (energy == 0) return;
+    if (energyHalfPending) --energy;
+    energyHalfPending = !energyHalfPending;
+  };
+
   fullness = clamp100(fullness - 2);
   // aguante: algunos minutos la energia no baja (staminaPct de cada 100)
-  if ((int)(ageMinutes % 100) >= staminaPct()) energy = clamp100(energy - 1);
+  if ((int)(ageMinutes % 100) >= staminaPct()) drainHalfEnergy();
   if (fullness > 40 && poops < 3 && random(100) < 15) poops++;
 
   hygiene = clamp100(hygiene - 1 - 4 * poops);
   // el sobrepeso da pereza: la energia cae el doble
-  if (weight > 50) energy = clamp100(energy - 1);
+  if (weight > 50) drainHalfEnergy();
   if (weight > 0 && ageMinutes % 3 == 0) weight--;
 
   // la disciplina forja la resistencia: 3 h seguidas bien cuidado = +1
@@ -241,7 +249,7 @@ void Pet::tick() {
     if (nature == NAT_GLUTTON) fullness = clamp100(fullness - 1);
     else if (nature == NAT_PLAYFUL) joy = clamp100(joy - 1);
     else if (nature == NAT_TIDY) hygiene = clamp100(hygiene - 1);
-    else if (nature == NAT_LAZY) energy = clamp100(energy - 1);
+    else if (nature == NAT_LAZY) drainHalfEnergy();
   }
 
   // el tiempo de fuera, un poco cada 5 min: lluvia para los de agua, nieve para
@@ -251,7 +259,7 @@ void Pet::tick() {
     int8_t f = weatherFeel();
     if (f > 0 && weather == PW_SUN) energy = clamp100(energy + 1);
     else if (f > 0) joy = clamp100(joy + 1);
-    else if (f < 0 && feelsCold()) energy = clamp100(energy - 1);
+    else if (f < 0 && feelsCold()) drainHalfEnergy();
     else if (f < 0) joy = clamp100(joy - 1);
   }
 
@@ -804,6 +812,7 @@ void Pet::importRec(const PetRec &r) {
   prevSpeciesId = -1;
   shiny = r.shiny;
   fullness = r.fullness; joy = r.joy; energy = r.energy; hygiene = r.hygiene;
+  energyHalfPending = false;
   poops = r.poops; weight = r.weight;
   geneAtk = r.geneAtk; geneDef = r.geneDef; geneSpe = r.geneSpe;
   trAtk = r.trAtk; trDef = r.trDef; trSpe = r.trSpe;
@@ -1297,6 +1306,7 @@ void Pet::save() {
   prefs.putUChar("full", fullness);
   prefs.putUChar("joy", joy);
   prefs.putUChar("ene", energy);
+  prefs.putBool("enehalf", energyHalfPending);
   prefs.putUChar("hyg", hygiene);
   prefs.putUChar("poop", poops);
   prefs.putBool("sick", sick);
@@ -1376,6 +1386,7 @@ void Pet::load() {
   fullness = prefs.getUChar("full", 80);
   joy = prefs.getUChar("joy", 80);
   energy = prefs.getUChar("ene", 80);
+  energyHalfPending = prefs.getBool("enehalf", false);
   hygiene = prefs.getUChar("hyg", 100);
   poops = prefs.getUChar("poop", 0);
   sick = prefs.getBool("sick", false);
