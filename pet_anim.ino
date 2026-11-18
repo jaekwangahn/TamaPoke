@@ -655,7 +655,7 @@ const char *statusMsg() {
   int8_t wf = pet.weatherFeel();
   if (wf < 0) return T(S_WX_HATE_RAIN);
   if (wf > 0) {
-    uint8_t b = DEX_TBL[pet.speciesId].biome;
+    uint8_t b = companionEntry(pet.speciesId).biome;
     return T(b == 5 ? S_WX_LIKE_SNOW : b == 2 ? S_WX_LIKE_SUN : S_WX_LIKE_RAIN);
   }
   return T(S_HAPPY);

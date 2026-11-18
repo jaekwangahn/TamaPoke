@@ -174,13 +174,13 @@ static int farmPages() { return farmCount() > 0 ? (farmCount() + FARM_PER_PAGE -
 
 // sacar al elegido: el compañero actual entra en la granja en su lugar
 void farmSwapIn(int idx) {
-  if (pet.isEgg()) { toast(T(S_HATCH_FIRST)); return; }
+  if (pet.isEgg() && !pet.vacant) { toast(T(S_HATCH_FIRST)); return; }
   if (pet.ceremony || idx < 0 || idx >= farmCount()) return;
   int16_t dex = farmAt(idx).speciesId;
   PetRec cur, sale;
   pet.exportRec(cur);
   if (!farmTake(pet, dex, sale)) return;
-  if (!farmPut(pet, cur)) {  // no se pudo guardar al actual: se deshace
+  if (!pet.vacant && !farmPut(pet, cur)) {  // no se pudo guardar al actual: se deshace
     farmPut(pet, sale);
     toast(T(S_NEED_SD));
     return;
@@ -352,13 +352,15 @@ static void drawFarmWalkers(uint32_t now) {
     const auto &entry = farmAt(farmPage * FARM_PER_PAGE + slot);
     const int x = walker.x, y = walker.y;
     gfx->fillEllipse(x, y - 1, 20, 5, C565(158, 184, 129));
-    if (walker.sprite.has(walker.action)) {
+    if (entry.speciesId == DEEPGONG_ID) {
+      drawDeepgongPet(x, y, 2, walker.moving, farmLevel(entry, pet));
+    } else if (walker.sprite.has(walker.action)) {
       drawPmdActM(walker.sprite, walker.action, x, y, now - walker.since,
                   walker.moving || walker.action == PMD_IDLE, false, 2);
     } else if (const uint8_t *thumb = thumbs.get(entry.speciesId)) {
       drawThumbIn(thumb, x - 24, y - 48, 1, false, 48);
     } else {
-      gfx->fillCircle(x, y - 15, 12, DEX_TBL[entry.speciesId].accent);
+      gfx->fillCircle(x, y - 15, 12, companionEntry(entry.speciesId).accent);
     }
     if (entry.shiny) {
       gfx->drawFastVLine(x + 23, y - 40, 7, C_GOLD);
@@ -420,9 +422,15 @@ void renderFarm() {
   }
   if (farmDetail >= 0 && farmDetail < farmCount()) {  // detalle: animado, se repinta siempre
     const FarmEntry &e = farmAt(farmDetail);
-    const DexEntry &d = DEX_TBL[e.speciesId];
-    gfx->fillScreen(RGB565_BLACK);
-    gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+    const DexEntry &d = companionEntry(e.speciesId);
+    const bool deepgong = e.speciesId == DEEPGONG_ID;
+    if (deepgong) {
+      drawDeepgongCampus(false);
+      gfx->fillRoundRect(CX - 130, 43, 260, 76, 16, UI_BG_DAY);
+    } else {
+      gfx->fillScreen(RGB565_BLACK);
+      gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
+    }
     char head[40];
     snprintf(head, sizeof(head), "%s%s", e.shiny ? "*" : "", e.nick[0] ? e.nick : dexName(e.speciesId));
     gfx->setTextColor(d.accent);
@@ -433,7 +441,7 @@ void renderFarm() {
     printT(head);
     // nivel y tipo en una linea; abajo, sus capacidades (lo que cuenta en gimnasios y torneo)
     char lv[16];
-    snprintf(lv, sizeof(lv), T(S_LVL_FMT), farmLevel(e, pet.lastSeenEpoch));
+    snprintf(lv, sizeof(lv), T(S_LVL_FMT), farmLevel(e, pet));
     uint8_t ty = typeOf(e.speciesId);
     const char *tn = T((StrId)(S_TY_NORMAL + ty));
     setSize(2);
@@ -448,10 +456,15 @@ void renderFarm() {
       char tr[48];
       snprintf(tr, sizeof(tr), T(S_TRAIN_FMT), farmRec.trAtk, farmRec.trDef, farmRec.trSpe);
       gfx->setTextColor(UI_INK);
+      if (deepgong) {
+        const int width = textW(tr, 2) + 24;
+        gfx->fillRoundRect(CX - width / 2, 320, width, 28, 10, UI_BG_DAY);
+      }
       setCur(centerX(tr, 2), 326);
       printT(tr);
     }
-    if (galleryPmd.loaded) drawPmdActM(galleryPmd, PMD_IDLE, CX, 320, millis(), true, false, 5);
+    if (deepgong) drawDeepgongPet(CX, 313, 6, false, farmLevel(e, pet));
+    else if (galleryPmd.loaded) drawPmdActM(galleryPmd, PMD_IDLE, CX, 320, millis(), true, false, 5);
     if (hasStatFruit())  // las frutas de la mochila: tocar una se la da
       for (int k = 0; k < 4; k++) {
         uint8_t it = ITEM_FRUIT_STA + k;
@@ -563,7 +576,7 @@ void renderAlbum() {
     if (t) drawThumb(t, ALBUM_X + 4, y + 3, 2, false);
     char l1[48];
     snprintf(l1, sizeof(l1), "%s%s Lv.%u", r.shiny ? "*" : "", r.nick[0] ? r.nick : dexName(r.speciesId), r.level);
-    gfx->setTextColor(DEX_TBL[r.speciesId].accent);
+    gfx->setTextColor(companionEntry(r.speciesId).accent);
     setSize(2);
     setCur(ALBUM_X + 76, y + 6);
     printT(l1);

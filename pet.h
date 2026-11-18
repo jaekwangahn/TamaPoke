@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "companion_id.h"
 #include <Preferences.h>
 #include <stddef.h>  // offsetof
 
@@ -34,6 +35,8 @@
 // coincide con DEX_COUNT.
 #define PET_DEX_MAX 1025
 #define PET_DEX_BYTES ((PET_DEX_MAX + 7) / 8)
+static_assert(DEEPGONG_ID <= PET_DEX_BYTES * 8, "Farm flags must fit existing saves");
+inline bool validCompanion(int16_t id) { return (id >= 1 && id <= PET_DEX_MAX) || id == DEEPGONG_ID; }
 
 // milisegundos que faltan hasta `deadline` (0 si ya paso, o si deadline==0:
 // "temporizador inactivo"). Todos los temporizadores del juego (dialogos,
@@ -65,12 +68,15 @@ enum : uint8_t {
   ITEM_PEARL,       // le alegra del todo
   ITEM_MEGA_SHARD,  // SHARDS_PER_STONE hacen una piedra megaevolucion (solas)
   ITEM_EGG_WATER, ITEM_EGG_FOSSIL,
+  ITEM_POTION_LEVEL,
   ITEM_COUNT
 };
-#define SHOP_ITEMS (ITEM_MEGA_STONE + 1)  // los que se venden (los primeros)
+#define SHOP_BASE_ITEMS (ITEM_MEGA_STONE + 1)
+#define SHOP_ITEMS (SHOP_BASE_ITEMS + 1)
+static inline uint8_t shopItem(int slot) { return slot == SHOP_BASE_ITEMS ? ITEM_POTION_LEVEL : slot; }
 #define FUN_ITEM0 ITEM_FRUIT_STA          // los del ocio: la pagina "cosecha" de la mochila
-#define FUN_ITEMS (ITEM_COUNT - FUN_ITEM0)
-static const uint16_t ITEM_PRICE[ITEM_COUNT] = { 2, 3, 5, 5, 50, 10, 30, 100, 100, 150 };  // 0: no se vende
+#define FUN_ITEMS (ITEM_EGG_FOSSIL + 1 - FUN_ITEM0)
+static const uint16_t ITEM_PRICE[ITEM_COUNT] = { 2, 3, 5, 5, 50, 10, 30, 100, 100, 150, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20 };  // 0: no se vende
 // premios escondidos en la hierba de la principal: uno al dia (poco), uno a la semana (de lunes
 // a domingo, algo mejor) y uno al mes (bueno). Sale el de mas valor que quede; no dan puntos
 enum : uint8_t { GRASS_NONE = 0, GRASS_DAY, GRASS_WEEK, GRASS_MONTH };
@@ -166,8 +172,8 @@ struct PetRec {
 static inline uint32_t farmAge(uint32_t ageMinutes, uint32_t farmEpoch, uint32_t now) {
   return ageMinutes + ((farmEpoch && now > farmEpoch) ? (now - farmEpoch) / 60 / FARM_GROWTH_DIV : 0);
 }
-static inline uint16_t levelOfAge(uint32_t ageMinutes) {
-  uint32_t lv = 1 + ageMinutes / MINUTES_PER_LEVEL;
+static inline uint16_t levelOfAge(uint32_t ageMinutes, uint16_t bonus = 0) {
+  uint32_t lv = 1 + ageMinutes / MINUTES_PER_LEVEL + bonus;
   return lv > 999 ? 999 : (uint16_t)lv;
 }
 
@@ -272,6 +278,7 @@ public:
   uint8_t lastFood = 0;
   uint16_t playSeq = 0;
   uint16_t selfBathSeq = 0, selfDozeSeq = 0;  // se lavo / se echo una cabezada solo (animacion)
+  uint16_t deepgongStudyLevels = 0;  // Loaded separately from the study session.
   uint32_t lastSeenEpoch = 0;   // ultima hora RTC vista (para progresion offline)
   uint8_t ceremony = CER_NONE;  // despedida/escapada/liberacion en curso
   uint8_t lastEnd = CER_NONE;   // como acabo la anterior (afecta al huevo)
@@ -304,6 +311,7 @@ public:
   // pocion de evolucion: si aun le falta tiempo para evolucionar, ya puede. No
   // se gasta si no sirve (no evoluciona, ya puede, o ya la tomo)
   bool useEvoPotion();
+  bool useLevelPotion();
   uint32_t evoAgeNeeded() const;  // edad (min) para la siguiente evolucion, con los descuidos
   bool showRegionDone() const { return timeLeft(regionUntil) > 0; }
   void dbgRegionBanner(int r) { regionJustDone = r + 1; regionUntil = millis() + 6000; }  // consola REGTEST
@@ -405,7 +413,7 @@ public:
   void exportRec(PetRec &r) const;   // el individuo actual, para guardarlo
   void importRec(const PetRec &r);   // sacar uno de la granja como compañero
   bool inFarm(int16_t dex) const {
-    return dex >= 1 && dex <= PET_DEX_MAX && (farmReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
+    return validCompanion(dex) && (farmReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
 
   bool isEgg() const { return speciesId < 0; }
@@ -448,8 +456,7 @@ public:
   // alcanza jugando normal, porque "quedaros juntos" permite posponer la
   // despedida indefinidamente. Se topa en 999 en vez de desbordar.
   uint16_t level() const {
-    uint32_t lv = 1 + ageMinutes / MINUTES_PER_LEVEL;
-    return lv > 999 ? 999 : (uint16_t)lv;
+    return levelOfAge(ageMinutes, speciesId == DEEPGONG_ID ? deepgongStudyLevels : 0);
   }
   bool isRegistered(int16_t dex) const {
     return dex >= 1 && dex <= PET_DEX_MAX && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));

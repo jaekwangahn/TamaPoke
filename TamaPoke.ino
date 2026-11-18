@@ -48,6 +48,9 @@
 #include "walltime.h"
 #include "config.h"
 #include <Preferences.h>
+#include "study_progress.h"
+#include "deepgong_campus.h"
+#include "deepgong_sprites.h"
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -325,7 +328,7 @@ static const StrId ITEM_NAME[ITEM_COUNT] = {
   S_ITEM_CANDY, S_ITEM_MEDICINE, S_ITEM_POTION_STR, S_ITEM_POTION_SPD, S_ITEM_SHINY_CHARM,
   S_ITEM_EGG_COMMON, S_ITEM_EGG_RARE, S_ITEM_EGG_LEGEND, S_ITEM_POTION_EVO, S_ITEM_MEGA_STONE,
   S_ITEM_FRUIT_STA, S_ITEM_FRUIT_RES, S_ITEM_FRUIT_VIT, S_ITEM_FRUIT_GOLD, S_ITEM_FISH, S_ITEM_PEARL, S_ITEM_SHARD,
-  S_ITEM_EGG_WATER, S_ITEM_EGG_FOSSIL,
+  S_ITEM_EGG_WATER, S_ITEM_EGG_FOSSIL, S_ITEM_POTION_LEVEL,
 };
 
 // ---------- compartido entre pestañas (las .ino se unen por orden alfabetico) ----------
@@ -449,6 +452,9 @@ void setup() {
                   seen > 1767225600UL ? " (desde la ultima hora guardada)" : "");
   }
   pet.syncClock(e);
+  farmAddDeepgong(pet, e);
+  loadStudy();
+  finishStudy(e);
   // arranca con la pantalla encendida: si dormia por tenerla apagada, despierta
   // (de noche sigue dormido hasta la mañana)
   pet.screenNap(false);
@@ -494,6 +500,7 @@ void ensureMon() {
 void loop() {
   uint32_t now = millis();
   pet.update(now);
+  updateStudy(now);
 
   // el amplificador sigue al estado de sueno (la llamada sale sola si no cambia).
   // Aqui cubre todas las vias: el boton de luz, el sueno nocturno y el que llega
@@ -592,6 +599,7 @@ void loop() {
   uint32_t utcNtp;
   if (netTimeTake(utcNtp) && utcNtp > 1700000000) {
     uint32_t wall = wallFromUtc(utcNtp), rtc = rtcEpoch();
+    Serial.printf("NTP: UTC=%lu local=%lu\n", (unsigned long)utcNtp, (unsigned long)wall);
     int32_t diff = (int32_t)(wall - rtc);
     if (diff >= 10 || diff <= -10) {
       rtcSetEpoch(wall);

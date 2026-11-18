@@ -59,10 +59,13 @@ void openClock() { clockOpen = true; }
 #define BRI_BTN_X 198
 #define BRI_BTN_W 70
 // unidad de la temperatura: una pildora pequeña entre el reloj y los botones
-#define TEMP_PILL_X 193
+#define TEMP_PILL_X 99
 #define TEMP_PILL_W 80
 #define TEMP_PILL_Y 155
 #define TEMP_PILL_H 28
+constexpr int VOLUME_X = 192;
+constexpr int VOLUME_W = 175;
+constexpr int VOLUME_STEP_W = 32;
 static const char *const LANG_CODES[LANG_COUNT] = { "EN", "ZH", "한국어" };
 
 // Boton de brillo: un sol y tres barras, encendidas las del nivel de ahora.
@@ -113,6 +116,27 @@ static void drawAudioSwitch(int y, const char *label, bool on) {
   printT(label);
 }
 
+static void drawVolumeControl() {
+  gfx->fillRoundRect(VOLUME_X, TEMP_PILL_Y, VOLUME_W, TEMP_PILL_H, 10, UI_WHITE);
+  gfx->drawRoundRect(VOLUME_X, TEMP_PILL_Y, VOLUME_W, TEMP_PILL_H, 10, UI_INK);
+  const int y = TEMP_PILL_Y + 6;
+  const int right = VOLUME_X + VOLUME_W - VOLUME_STEP_W;
+  gfx->drawFastVLine(VOLUME_X + VOLUME_STEP_W, TEMP_PILL_Y + 3, TEMP_PILL_H - 6, UI_TRACK);
+  gfx->drawFastVLine(right, TEMP_PILL_Y + 3, TEMP_PILL_H - 6, UI_TRACK);
+  setSize(2);
+  gfx->setTextColor(audioVolume() > 1 ? UI_INK : UI_HINT);
+  setCur(VOLUME_X + 10, y);
+  printT("-");
+  gfx->setTextColor(audioVolume() < AUDIO_VOLUME_LEVELS ? UI_INK : UI_HINT);
+  setCur(right + 10, y);
+  printT("+");
+  char label[30];
+  snprintf(label, sizeof(label), "%s %u/%u", T(S_VOLUME), unsigned(audioVolume()), unsigned(AUDIO_VOLUME_LEVELS));
+  gfx->setTextColor(UI_INK);
+  setCur(VOLUME_X + (VOLUME_W - textW(label, 2)) / 2, y);
+  printT(label);
+}
+
 void renderClock() {
   gfx->fillScreen(RGB565_BLACK);
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
@@ -141,6 +165,8 @@ void renderClock() {
     setCur(x0 + 8, y0);
     printT(u);
   }
+
+  drawVolumeControl();
 
   // sonido, wi-fi (verde si ya hay red), idioma, restaurar la copia (su fecha debajo)
   char lp[24];  // UTF-8: "한국어 >" needs more than ten bytes.
@@ -296,6 +322,14 @@ void clockTap(int16_t x, int16_t y) {
     statsOpen = false;
     return;
   }
+  if (x >= VOLUME_X && x < VOLUME_X + VOLUME_W &&
+      y >= TEMP_PILL_Y - 4 && y < TEMP_PILL_Y + TEMP_PILL_H + 4) {
+    const int previous = audioVolume();
+    if (x < VOLUME_X + VOLUME_STEP_W) audioSetVolume(previous - 1);
+    else if (x >= VOLUME_X + VOLUME_W - VOLUME_STEP_W) audioSetVolume(previous + 1);
+    if (previous != audioVolume()) sfxPlay(SFX_TAP);
+    return;
+  }
   if (x >= TEMP_PILL_X && x < TEMP_PILL_X + TEMP_PILL_W && y >= TEMP_PILL_Y - 4 &&
       y < TEMP_PILL_Y + TEMP_PILL_H + 4) {  // grados C <-> F (por dentro todo sigue en C)
     tempF = !tempF;
@@ -397,7 +431,7 @@ void drawMedalBadge(int x, int y, int i) {
 
 // pagina 0: perfil (retrato grande, identidad, racha, vinculo, edad)
 void renderCardProfile() {
-  const DexEntry &d = DEX_TBL[pet.speciesId];
+  const DexEntry &d = companionEntry(pet.speciesId);
   char head[48], nb[40];
   snprintf(head, sizeof(head), T(S_NAME_FMT), pet.shiny ? "*" : "", petName(nb, sizeof(nb)), pet.level());
   gfx->setTextColor(d.accent);
@@ -520,7 +554,7 @@ void renderCardMedals(int first) {
 // pagina 3: progreso (nivel, evolucion, descuidos) — saca a la luz mecanicas
 // que antes eran invisibles (cuanto falta para subir/evolucionar y por que)
 void renderCardProgress() {
-  const DexEntry &d = DEX_TBL[pet.speciesId];
+  const DexEntry &d = companionEntry(pet.speciesId);
   gfx->setTextColor(UI_INK);
   setSize(3);
   setCur(centerX(T(S_PROGRESS), 3), 44);

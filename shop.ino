@@ -75,6 +75,16 @@ void drawItemIcon(int item, int x, int y) {
     case ITEM_POTION_STR:  drawMap(SPR_ICON_POTION_STR, 16, x, y, 3, false); break;
     case ITEM_POTION_SPD:  drawMap(SPR_ICON_POTION_SPD, 16, x, y, 3, false); break;
     case ITEM_SHINY_CHARM: drawMap(SPR_ICON_STAR, 16, x, y, 3, false); break;
+    case ITEM_POTION_LEVEL: {
+      const uint16_t liquid = C565(0x23, 0xb9, 0x88);
+      gfx->fillRoundRect(x + 18, y + 3, 12, 11, 3, UI_INK);
+      gfx->fillRect(x + 20, y + 12, 8, 7, liquid);
+      gfx->fillCircle(x + 24, y + 30, 15, liquid);
+      gfx->drawCircle(x + 24, y + 30, 15, UI_INK);
+      gfx->fillTriangle(x + 17, y + 29, x + 31, y + 29, x + 24, y + 21, UI_WHITE);
+      gfx->fillRect(x + 22, y + 28, 5, 10, UI_WHITE);
+      break;
+    }
     case ITEM_POTION_EVO: {  // frasco con un remolino de colores y un destello
       gfx->fillRoundRect(x + 18, y + 2, 12, 10, 3, C565(0x9a, 0x70, 0x50));
       gfx->fillCircle(x + 24, y + 30, 16, C565(0xc0, 0x80, 0xf0));
@@ -114,6 +124,8 @@ void drawItemIcon(int item, int x, int y) {
 #define SHOP_Y0 86
 #define SHOP_W 177
 #define SHOP_H 58
+#define LEVEL_CARD_X (CX - SHOP_W / 2)
+#define LEVEL_CARD_Y (SHOP_Y0 + 5 * SHOP_H)
 
 static int8_t shopAsk = -1;      // confirmando la compra de esto (objeto o complemento); -1 = nada
 static bool shopAskAcc = false;
@@ -184,6 +196,10 @@ void useItem(int item) {
               : pet.sleeping ? S_ASLEEP : S_CANT_USE));
       break;
     }
+    case ITEM_POTION_LEVEL:
+      if (pet.useLevelPotion()) { toast(T(S_USED)); sfxPlay(SFX_MEDAL); }
+      else toast(T(pet.level() >= 999 ? S_MAXED : S_CANT_USE));
+      break;
     case ITEM_POTION_EVO:  // ya puede evolucionar (si le hacia falta)
       toast(pet.useEvoPotion() ? T(S_EVO_READY) : T(S_CANT_USE));
       break;
@@ -210,10 +226,16 @@ void shopTap(int16_t x, int16_t y) {
     return;
   }
   if (y < 72) { closeShop(); return; }  // cabecera = salir
-  if (x < SHOP_X0 || y < SHOP_Y0) return;
-  int c = (x - SHOP_X0) / SHOP_W, r = (y - SHOP_Y0) / SHOP_H;
-  if (c > 1 || r > 4) return;
-  int item = r * 2 + c;
+  int item;
+  if (shopPage < 2 && x >= LEVEL_CARD_X && x < LEVEL_CARD_X + SHOP_W &&
+      y >= LEVEL_CARD_Y && y < LEVEL_CARD_Y + SHOP_H) {
+    item = SHOP_BASE_ITEMS;
+  } else {
+    if (x < SHOP_X0 || y < SHOP_Y0) return;
+    int c = (x - SHOP_X0) / SHOP_W, r = (y - SHOP_Y0) / SHOP_H;
+    if (c > 1 || r > 4) return;
+    item = r * 2 + c;
+  }
   if (shopPage == 2) {  // cosecha: lo del ocio
     if (item < FUN_ITEMS) useItem(FUN_ITEM0 + item);
     shopDirty = true;
@@ -233,8 +255,8 @@ void shopTap(int16_t x, int16_t y) {
     shopDirty = true;
     return;
   }
+  item = shopItem(item);
   if (shopPage == 0) {
-    if (item >= SHOP_ITEMS) return;
     if (pet.points >= ITEM_PRICE[item] && pet.bag[item] < 999) {
       shopAsk = item;  // primero, confirmar
       shopAskAcc = false;
@@ -280,8 +302,9 @@ void renderShop() {
   }
   int nItems = shopPage < 2 ? SHOP_ITEMS : (shopPage == 2 ? FUN_ITEMS : 0);
   for (int k = 0; k < nItems; k++) {
-    int i = shopPage == 2 ? FUN_ITEM0 + k : k;  // la cosecha: los del ocio
-    int x = SHOP_X0 + (k % 2) * SHOP_W, y = SHOP_Y0 + (k / 2) * SHOP_H;
+    int i = shopPage == 2 ? FUN_ITEM0 + k : shopItem(k);
+    int x = i == ITEM_POTION_LEVEL ? LEVEL_CARD_X : SHOP_X0 + (k % 2) * SHOP_W;
+    int y = i == ITEM_POTION_LEVEL ? LEVEL_CARD_Y : SHOP_Y0 + (k / 2) * SHOP_H;
     bool apagado = (shopPage == 0) ? pet.points < ITEM_PRICE[i] : pet.bag[i] == 0;
     gfx->fillRoundRect(x + 2, y + 2, SHOP_W - 4, SHOP_H - 4, 10, apagado ? UI_TRACK : UI_WHITE);
     gfx->drawRoundRect(x + 2, y + 2, SHOP_W - 4, SHOP_H - 4, 10, UI_INK);
@@ -310,9 +333,10 @@ void renderShop() {
     printT(own);
   }
   // paginas: tienda / mochila / cosecha / complementos
+  const int pageDotY = shopPage < 2 ? 442 : 394;
   for (int i = 0; i < 4; i++) {
-    if (i == shopPage) gfx->fillCircle(CX - 30 + i * 20, 394, 5, UI_INK);
-    else gfx->drawCircle(CX - 30 + i * 20, 394, 4, UI_INK);
+    if (i == shopPage) gfx->fillCircle(CX - 30 + i * 20, pageDotY, 5, UI_INK);
+    else gfx->drawCircle(CX - 30 + i * 20, pageDotY, 4, UI_INK);
   }
   if (shopAsk >= 0) {  // ¿comprar?
     char l2[40];

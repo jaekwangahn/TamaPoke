@@ -92,12 +92,16 @@ TEST(weather, sin_datos_del_sol_usa_6_30_y_19_30) {
 
 TEST(bgm, scene_weather_and_light_change_the_arrangement) {
   const MusicContext home{MusicPlace::Home, MusicLight::Day, MusicWeather::Fair, 0};
-  const auto base = musicStep(home, 1);
-  CHECK(musicStep({MusicPlace::Farm, home.light, home.weather, 0}, 1).lead != base.lead);
-  CHECK(musicStep({MusicPlace::Sports, home.light, home.weather, 0}, 1).milliseconds < base.milliseconds);
-  CHECK(musicStep({home.place, MusicLight::Night, home.weather, 0}, 1).milliseconds > base.milliseconds);
-  CHECK(musicStep({home.place, home.light, MusicWeather::Wet, 0}, 1).voice == MusicVoice::Pluck);
-  CHECK(musicStep({home.place, home.light, MusicWeather::Snow, 0}, 1).voice == MusicVoice::Bell);
-  CHECK(musicStep({home.place, home.light, home.weather, 1}, 1).lead != base.lead);
-  CHECK_EQ(musicStep(home, 65).lead, base.lead);
+  const auto base = musicStep(home, 2);
+  CHECK(musicStep({MusicPlace::Farm, home.light, home.weather, 0}, 2).lead != base.lead);
+  CHECK(musicStep({MusicPlace::Sports, home.light, home.weather, 0}, 2).milliseconds < base.milliseconds);
+  CHECK(musicStep({home.place, MusicLight::Night, home.weather, 0}, 2).milliseconds > base.milliseconds);
+  CHECK(musicStep({home.place, home.light, MusicWeather::Wet, 0}, 2).milliseconds > base.milliseconds);
+  CHECK(musicStep({home.place, home.light, home.weather, 1}, 2).lead != base.lead);
+  CHECK_EQ(musicStep(home, MUSIC_STEPS + 2).lead, base.lead);
+  for (uint8_t beat = 0; beat < MUSIC_BAR_STEPS; ++beat) {
+    const auto note = musicStep(home, beat);
+    CHECK_EQ(note.bass != 0, beat == 0);
+    CHECK_EQ(note.harmony != 0, beat == 2 || beat == 4);
+  }
 }

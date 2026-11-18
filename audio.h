@@ -31,3 +31,7 @@ bool audioMusicEnabled();
 void audioSetMusicEnabled(bool on);
 void audioSetMusicContext(MusicContext context);
 void audioPrintStatus();  // read-only USB diagnostics
+
+constexpr uint8_t AUDIO_VOLUME_LEVELS = 6;
+uint8_t audioVolume();
+void audioSetVolume(uint8_t level);

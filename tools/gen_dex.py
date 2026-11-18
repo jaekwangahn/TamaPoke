@@ -92,9 +92,17 @@ def main():
             out.append("  " + ", ".join(fila) + ",\n")
         out.append("};\n\n")
     out.append(
+        '#include "companion_id.h"\n'
+        'static inline const DexEntry &companionEntry(int16_t dex) {\n'
+        '  static constexpr DexEntry deepgong = {"DEEPGONG", 0, 0, R_NONE, 0xA514, 55, 48, 53, 50, 0};\n'
+        '  if (dex == DEEPGONG_ID) return deepgong;\n'
+        '  return DEX_TBL[dex >= 0 && dex <= DEX_COUNT ? dex : 0];\n'
+        '}\n\n')
+    out.append(
         "// Nombre de la especie en el idioma activo (cae al de DEX_TBL si ese\n"
         "// idioma no tiene nombre propio para ella).\n"
         "static inline const char *dexName(int16_t dex) {\n"
+        "  if (dex == DEEPGONG_ID) return T(S_DEEPGONG);\n"
         "  if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;\n"
         "  const char *n = (gLang == LANG_KO) ? DEX_NAME_KO[dex]\n"
         "                  : (gLang == LANG_ZH) ? DEX_NAME_ZH[dex] : nullptr;\n"

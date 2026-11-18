@@ -20,6 +20,8 @@
 
 static I2SClass i2s;
 static bool gReady = false;
+static std::atomic<uint8_t> gVolume{1};
+static constexpr uint8_t VOLUME_GAIN[AUDIO_VOLUME_LEVELS] = {3, 8, 16, 30, 55, 100};
 static std::atomic<bool> gOn{true}, gMusicOn{true};
 static std::atomic<uint32_t> gMusicContext{0}, gMusicBlocks{0};
 static std::atomic<bool> gSleeping{false};
@@ -133,12 +135,13 @@ struct Voice {
     increment = midi ? static_cast<uint32_t>(440.0 * pow(2.0, (midi - 69) / 12.0)
                                              * 4294967296.0 / SAMPLE_RATE) : 0;
   }
-  int sample(const int16_t *wave, uint8_t harmonic, int gain, int envelope) {
+  int sample(const int16_t *wave, int gain, int envelope, int overtone) {
     if (!increment) return 0;
     const uint32_t p = phase;
     phase += increment;
-    const int value = wave[p >> 24] + wave[(p * harmonic) >> 24] / 4;
-    return value * gain * envelope / (256 * 8);
+    const int core = wave[p >> 24] * envelope;
+    const int chime = (wave[(p * 3) >> 24] + wave[(p * 5) >> 24] / 2) * overtone / 4;
+    return (core + chime) * gain / (256 * 8);
   }
 };
 
@@ -149,8 +152,8 @@ static void audioTask(void *) {
   uint8_t step = 0, id = SFX_COUNT, noteIndex = 0;
   int position = 0, length = 0, fxPosition = 0, fxLength = 0, fxHalf = 0;
   uint32_t activeContext = UINT32_MAX;
-  MusicVoice instrument = MusicVoice::Felt;
   for (;;) {
+    const int gain = VOLUME_GAIN[gVolume.load() - 1];
     const bool sleeping = gSleeping;
     const bool music = gMusicOn && !sleeping;
     const bool effects = gOn && !sleeping;
@@ -177,20 +180,21 @@ static void audioTask(void *) {
           if (activeContext != context) step = 0;
           activeContext = context;
           MusicStep bar = musicStep({MusicPlace(context & 3), MusicLight((context >> 2) & 3),
-                                     MusicWeather((context >> 4) & 3), uint8_t(context >> 8)}, step++);
+                                     MusicWeather((context >> 4) & 3), uint8_t(context >> 8)}, step);
+          step = (step + 1) % MUSIC_STEPS;
           lead.start(bar.lead);
           harmony.start(bar.harmony);
           bass.start(bar.bass);
           position = 0;
           length = SAMPLE_RATE * bar.milliseconds / 1000;
-          instrument = bar.voice;
         }
-        const int edge = min(256, min(position, length - position));
-        const int decay = 256 - position * (instrument == MusicVoice::Felt ? 110 : 220) / length;
-        const int env = edge * decay / 256;
-        value = lead.sample(wave, instrument == MusicVoice::Bell ? 3 : 2, 2, env)
-              + harmony.sample(wave, 2, 1, env)
-              + bass.sample(wave, 2, 1, env);
+        const int edge = min(128, min(position, length - position));
+        const int decay = (length - position) * 256 / length;
+        const int envelope = edge * decay * decay / (128 * 256);
+        const int overtone = envelope * decay / 256;
+        value = lead.sample(wave, 3, envelope, overtone)
+              + harmony.sample(wave, 2, envelope, overtone)
+              + bass.sample(wave, 2, envelope, overtone / 3);
         // Keep the instrumental bed well below the game cues.
         ++position;
       }
@@ -210,7 +214,7 @@ static void audioTask(void *) {
           }
         }
       }
-      buf[i * 2] = buf[i * 2 + 1] = value;
+      buf[i * 2] = buf[i * 2 + 1] = value * gain / 100;
     }
     const size_t written = i2s.write(reinterpret_cast<uint8_t *>(buf), sizeof(buf));
     if (music && written == sizeof(buf)) ++gMusicBlocks;
@@ -235,6 +239,7 @@ void audioBegin() {
   p.begin("tamapoke", true);
   gOn = p.getBool("snd", true);
   gMusicOn = p.getBool("bgm", gOn.load());
+  gVolume = constrain(p.getUChar("vol", 1), 1, AUDIO_VOLUME_LEVELS);
   p.end();
 
   gQ = xQueueCreate(8, sizeof(uint8_t));
@@ -294,10 +299,21 @@ void audioSetMusicContext(MusicContext context) {
                       (uint32_t(context.weather) << 4) | (uint32_t(context.region) << 8));
 }
 
+uint8_t audioVolume() { return gVolume.load(); }
+
+void audioSetVolume(uint8_t level) {
+  if (level < 1 || level > AUDIO_VOLUME_LEVELS || level == audioVolume()) return;
+  Preferences p;
+  if (p.begin("tamapoke", false)) {
+    if (p.putUChar("vol", level)) gVolume = level;
+    p.end();
+  }
+}
+
 void audioPrintStatus() {
   const uint32_t context = gMusicContext.load();
-  Serial.printf("audio ready=%d sfx=%d bgm=%d sleeping=%d place=%u light=%u weather=%u region=%u blocks=%lu\n",
-                gReady, gOn.load(), gMusicOn.load(), gSleeping.load(),
+  Serial.printf("audio ready=%d sfx=%d bgm=%d volume=%u sleeping=%d place=%u light=%u weather=%u region=%u blocks=%lu\n",
+                gReady, gOn.load(), gMusicOn.load(), unsigned(audioVolume()), gSleeping.load(),
                 unsigned(context & 3), unsigned((context >> 2) & 3),
                 unsigned((context >> 4) & 3), unsigned(context >> 8),
                 static_cast<unsigned long>(gMusicBlocks.load()));

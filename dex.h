@@ -1315,9 +1315,17 @@ static const char *const DEX_NAME_ZH[DEX_COUNT + 1] = {
   "太乐巴戈斯", "桃歹郎",
 };
 
+#include "companion_id.h"
+static inline const DexEntry &companionEntry(int16_t dex) {
+  static constexpr DexEntry deepgong = {"DEEPGONG", 0, 0, R_NONE, 0xA514, 55, 48, 53, 50, 0};
+  if (dex == DEEPGONG_ID) return deepgong;
+  return DEX_TBL[dex >= 0 && dex <= DEX_COUNT ? dex : 0];
+}
+
 // Nombre de la especie en el idioma activo (cae al de DEX_TBL si ese
 // idioma no tiene nombre propio para ella).
 static inline const char *dexName(int16_t dex) {
+  if (dex == DEEPGONG_ID) return T(S_DEEPGONG);
   if (dex < 1 || dex > DEX_COUNT) return DEX_TBL[0].name;
   const char *n = (gLang == LANG_KO) ? DEX_NAME_KO[dex]
                   : (gLang == LANG_ZH) ? DEX_NAME_ZH[dex] : nullptr;

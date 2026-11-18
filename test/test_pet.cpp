@@ -5,6 +5,8 @@
 #include "../dex.h"
 #include "../regions.h"
 #include "../fun.h"
+#include "../farm.h"
+#include "../study_progress.h"
 #include <string.h>
 #include <set>
 
@@ -2649,4 +2651,116 @@ TEST(stats, cuentan_los_nacidos_y_los_pasos_de_siempre) {
   q.begin();
   CHECK_EQ(q.raisedCount, (uint16_t)2);
   CHECK_EQ(q.stepsTotal, (uint32_t)1500);
+}
+
+TEST(farm, deepgong_can_be_raised_and_loaded_without_using_a_dex_slot) {
+  Pet pet;
+  makePet(pet, 4);
+  PetRec record{};
+  record.ver = PET_REC_VER;
+  record.speciesId = DEEPGONG_ID;
+  record.fullness = record.joy = record.energy = record.hygiene = 65;
+  pet.importRec(record);
+  CHECK_EQ(pet.speciesId, DEEPGONG_ID);
+  CHECK(pet.atkStat() > 0);
+  CHECK(pet.defStat() > 0);
+  CHECK(pet.speStat() > 0);
+  CHECK(!pet.isRegistered(DEEPGONG_ID));
+  pet.feed();
+  CHECK(pet.fullness > 65);
+  Pet reloaded;
+  reloaded.begin();
+  CHECK_EQ(reloaded.speciesId, DEEPGONG_ID);
+  CHECK_EQ(reloaded.fullness, pet.fullness);
+}
+
+TEST(study, earlier_sessions_award_once_after_the_deadline) {
+  constexpr uint32_t deadline = 1800000000;
+  for (uint8_t hours : {1, 2, 4, 8}) {
+    const uint64_t legacyRecord = (uint64_t(deadline) << 8) | hours;
+    StudyProgress progress = StudyProgress::decode(legacyRecord);
+    CHECK(!progress.complete(0));
+    CHECK(!progress.complete(deadline - 1));
+    CHECK(progress.complete(deadline));
+    CHECK_EQ(progress.bonus, uint16_t(hours));
+
+    progress = StudyProgress::decode(progress.encode());
+    CHECK(!progress.complete(deadline + 1));
+    CHECK_EQ(progress.bonus, uint16_t(hours));
+
+    progress.endsAt = 0;
+    progress.hours = 0;
+    progress.awarded = false;
+    CHECK(!StudyProgress::decode(progress.encode()).complete(deadline + 1));
+  }
+}
+
+TEST(study, only_deepgong_gains_study_levels_in_both_views) {
+  Pet p;
+  p.ageMinutes = 120;
+  p.deepgongStudyLevels = 8;
+  const FarmEntry deepgong{DEEPGONG_ID, false, 120, 0, ""};
+  const FarmEntry other{4, false, 120, 0, ""};
+  p.speciesId = DEEPGONG_ID;
+  CHECK_EQ(p.level(), uint16_t(11));
+  CHECK_EQ(farmLevel(deepgong, p), p.level());
+  p.speciesId = 4;
+  CHECK_EQ(p.level(), uint16_t(3));
+  CHECK_EQ(farmLevel(other, p), p.level());
+
+  p.speciesId = DEEPGONG_ID;
+  p.ageMinutes = 998 * MINUTES_PER_LEVEL;
+  CHECK_EQ(p.level(), uint16_t(999));
+  StudyProgress progress;
+  progress.endsAt = 100;
+  progress.hours = 8;
+  progress.bonus = STUDY_LEVEL_CAP - 1;
+  CHECK(progress.complete(100));
+  CHECK_EQ(progress.bonus, STUDY_LEVEL_CAP);
+}
+
+TEST(study, deepgong_form_follows_the_earned_level) {
+  Pet p;
+  p.speciesId = DEEPGONG_ID;
+  const FarmEntry entry{DEEPGONG_ID, false, 0, 0, ""};
+
+  const uint16_t levels[] = {1, 9, 10, 19, 20, 29, 30, 39, 40, 999};
+  const uint8_t forms[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+  for (int i = 0; i < 10; ++i) {
+    p.deepgongStudyLevels = levels[i] - 1;
+    CHECK_EQ(deepgongForm(p.level()), forms[i]);
+    CHECK_EQ(deepgongForm(farmLevel(entry, p)), forms[i]);
+  }
+}
+
+TEST(shop, level_potion_is_purchased_used_and_saved) {
+  Pet p;
+  makePet(p, 4);
+  p.points = 25;
+  p.ageMinutes = 39 * MINUTES_PER_LEVEL + 13;
+  p.bag[ITEM_POTION_EVO] = 1;
+  CHECK_EQ(shopItem(SHOP_BASE_ITEMS), ITEM_POTION_LEVEL);
+  CHECK(!p.buy(ITEM_FRUIT_STA));
+  CHECK(p.buy(ITEM_POTION_LEVEL));
+  CHECK_EQ(p.points, int32_t(5));
+
+  Pet q;
+  q.begin();
+  CHECK_EQ(q.bag[ITEM_POTION_EVO], uint16_t(1));
+  CHECK_EQ(q.bag[ITEM_POTION_LEVEL], uint16_t(1));
+  CHECK(q.useLevelPotion());
+  CHECK_EQ(q.level(), uint16_t(41));
+  CHECK_EQ(q.ageMinutes % MINUTES_PER_LEVEL, uint32_t(13));
+
+  Pet r;
+  r.begin();
+  CHECK_EQ(r.level(), uint16_t(41));
+  CHECK_EQ(r.bag[ITEM_POTION_LEVEL], uint16_t(0));
+  r.bag[ITEM_POTION_LEVEL] = 1;
+  r.ageMinutes = 998 * MINUTES_PER_LEVEL;
+  CHECK(!r.useLevelPotion());
+  r.ageMinutes = 0;
+  r.vacant = true;
+  CHECK(!r.useLevelPotion());
+  CHECK_EQ(r.bag[ITEM_POTION_LEVEL], uint16_t(1));
 }

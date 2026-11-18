@@ -4,7 +4,7 @@
 // Dibuja un frame y devuelve true si lo ha volcado al panel.
 bool render() {
   // enchufado y sin tocar: reloj de espera (antes que nada: no es una pantalla "quieta")
-  if (!pet.awaitingStarter() && !wifiPortalActive() && standbyClock(powerCtx(millis()))) {
+  if (!pet.awaitingStarter() && !wifiPortalActive() && !studyScreenOpen() && standbyClock(powerCtx(millis()))) {
     screenKeyValid = false;
     renderStandby();
     return true;
@@ -83,7 +83,7 @@ bool render() {
   if (!pet.ceremony) drawHoliday(millis());
 
   if (pet.ceremony) {
-    const DexEntry &d = DEX_TBL[pet.speciesId];
+    const DexEntry &d = companionEntry(pet.speciesId);
     const char *msg = (pet.ceremony == CER_FAREWELL) ? T(S_FAREWELL)
                       : (pet.ceremony == CER_RUNAWAY) ? T(S_RUNAWAY)
                       : (pet.ceremony == CER_COLLECT) ? T(S_TO_FARM)
@@ -120,7 +120,7 @@ bool render() {
     setCur(centerX(reg, 2), 348);
     printT(reg);
   } else {
-    const DexEntry &d = DEX_TBL[pet.speciesId];
+    const DexEntry &d = companionEntry(pet.speciesId);
     char name[48], nb[40];
     snprintf(name, sizeof(name), T(S_NAME_FMT), pet.shiny ? "*" : "", petName(nb, sizeof(nb)), pet.level());
     drawHeader(name, gNight ? UI_INK_NIGHT : d.accent, statusMsg());
@@ -560,6 +560,12 @@ void drawEvolveFX(uint32_t now) {
 }
 
 void drawPet() {
+  if (pet.speciesId == DEEPGONG_ID) {
+    const int scale = 4 + (pet.level() >= 6) + (pet.level() >= 16);
+    drawDeepgongPet(CX, PET_GROUND, scale, pet.showHeart(), pet.level());
+    if (pet.showHeart()) drawMap(SPR_HEART, 32, CX + 55, PET_CY - 85, 2, false);
+    return;
+  }
   if (pmd.loaded) {
     drawPetPMD();
     return;

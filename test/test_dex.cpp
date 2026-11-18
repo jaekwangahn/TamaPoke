@@ -227,7 +227,8 @@ TEST(dex, dexName_fuera_de_rango_no_revienta) {
     gLang = (Lang)lang;
     CHECK_STREQ(dexName(0), DEX_TBL[0].name);
     CHECK_STREQ(dexName(-1), DEX_TBL[0].name);
-    CHECK_STREQ(dexName(DEX_COUNT + 1), DEX_TBL[0].name);
+    CHECK_STREQ(dexName(DEEPGONG_ID), T(S_DEEPGONG));
+    CHECK_STREQ(dexName(DEX_COUNT + 2), DEX_TBL[0].name);
     CHECK_STREQ(dexName(30000), DEX_TBL[0].name);
   }
   gLang = LANG_DEFAULT;

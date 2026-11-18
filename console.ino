@@ -182,7 +182,7 @@ void handleSerial() {
     Serial.printf("rtc=%u\n", rtcEpoch());
     Serial.println("DONE");
   } else if (line == "TIME") {
-    Serial.printf("rtc=%u\n", rtcEpoch());
+    Serial.printf("rtc=%u utc=%lu\n", rtcEpoch(), (unsigned long)time(nullptr));
     Serial.println("DONE");
   } else if (line == "GAL") {
     galleryOpen = !galleryOpen;

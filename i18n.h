@@ -172,6 +172,8 @@ enum StrId : uint16_t {  // mas de 256 textos
   S_HOURS_FMT, S_MINS_FMT,  // huerto: lo que le falta a cada parcela (corto, para que quepa)
   S_BUY_FOR_FMT, S_SPEND_Q_FMT,  // confirmar antes de gastar puntos (tienda, ocio)
   S_SFX_ON, S_SFX_OFF, S_BGM_ON, S_BGM_OFF,
+  S_STUDY, S_DEEPGONG, S_STUDY_END, S_STUDY_DONE, S_STUDY_PICK, S_STUDY_SAVE_FAIL, S_STUDY_STOP_Q,
+  S_VOLUME, S_ITEM_POTION_LEVEL,
   STR_COUNT
 };
 

@@ -3,7 +3,7 @@
 // vale, y si no (o no puede ahora), uno de la granja que lo sea.
 //  - huerto: tres parcelas en tiempo real (plantar, regar una vez, cosechar)
 //  - pesca: se lanza y se toca la pantalla cuando pica
-//  - mina: se rompe la piedra a toques
+//  - estudio: temporizador con Deepgong
 //  - expedicion: sale una hora (si va el compañero, no esta en la principal)
 // (pestaña de TamaPoke.ino: Arduino la une al final del principal)
 
@@ -20,13 +20,7 @@ static uint8_t fnWho[FUN_COUNT];      // cuantos pueden ir a cada una (al entrar
 enum : uint8_t { FS_IDLE = 0, FS_WAIT, FS_BITE };
 static uint8_t fsStage = FS_IDLE;
 static uint32_t fsT0 = 0, fsBite = 0;
-// mina
-static uint8_t mnHits = 0;
-static bool mnRock = false;
-static uint32_t mnHitAt = 0;
-#define MN_HITS 5
-// confirmar antes de gastar puntos: plantar (en que parcela), lanzar, picar, salir
-enum : uint8_t { ASK_NONE = 0, ASK_PLANT, ASK_CAST, ASK_DIG, ASK_QUEST };
+enum : uint8_t { ASK_NONE = 0, ASK_PLANT, ASK_CAST, ASK_QUEST };
 static uint8_t fnAsk = ASK_NONE, fnAskPlot = 0;
 // lo que salio
 static FunLoot fnLoot;
@@ -38,7 +32,7 @@ static uint32_t prPlot[GARDEN_PLOTS];
 static uint8_t prWet = 0;
 static uint32_t prQuest = 0;
 
-static const StrId FUN_NAME[FUN_COUNT] = { S_FUN_GARDEN, S_FUN_FISH, S_FUN_MINE, S_FUN_QUEST };
+static const StrId FUN_NAME[FUN_COUNT] = { S_FUN_GARDEN, S_FUN_FISH, S_STUDY, S_FUN_QUEST };
 static const StrId FUN_NEED[FUN_COUNT] = { S_NEED_GARDEN, S_NEED_FISH, S_NEED_MINE, S_NEED_QUEST };
 static const uint16_t FUN_COL[FUN_COUNT] = { 0xB6F2, 0xAEFF, C565(0xf4, 0xc8, 0x98), 0xFF2E };
 
@@ -98,8 +92,6 @@ static void startAct(bool mine, int farmIdx) {
     fnPmd = &rivalPmd[0];
   }
   fsStage = FS_IDLE;
-  mnRock = false;
-  mnHits = 0;
   fnStage = FN_PLAY;
 }
 
@@ -113,6 +105,11 @@ void funPractice(int act) {
   fnPractice = true;
   fnAct = act;
   countWho();
+  if (act == FUN_MINE) {
+    studyEnter();
+    fnStage = FN_PLAY;
+    return;
+  }
   listCands(act);
   startAct(petFits(act) || !fnCandN, fnCandN ? fnCand[0] : 0);
 }
@@ -170,11 +167,8 @@ static void drawFunIcon(uint8_t a, int x, int y) {
       gfx->fillCircle(x + 14, y + 20, 3, UI_WHITE);
       gfx->fillCircle(x + 14, y + 20, 1, UI_INK);
       break;
-    case FUN_MINE:  // pico
-      gfx->fillTriangle(x + 8, y + 42, x + 12, y + 46, x + 34, y + 18, C565(0x8a, 0x60, 0x38));
-      gfx->fillTriangle(x + 8, y + 42, x + 30, y + 14, x + 34, y + 18, C565(0x8a, 0x60, 0x38));
-      gfx->fillTriangle(x + 14, y + 8, x + 42, y + 30, x + 32, y + 14, C565(0x90, 0x98, 0xa8));
-      gfx->fillTriangle(x + 14, y + 8, x + 32, y + 14, x + 26, y + 6, C565(0x90, 0x98, 0xa8));
+    case FUN_MINE:
+      drawStudyIcon(x, y);
       break;
     default:  // mapa con la X
       gfx->fillRoundRect(x + 4, y + 6, 40, 36, 4, C565(0xf0, 0xdc, 0xa8));
@@ -262,13 +256,14 @@ static void renderFunList() {
   uint32_t now = fnNow();
   for (int a = 0; a < FUN_COUNT; a++) {
     int x = FL_X0 + (a % 2) * (FL_W + 8), y = FL_Y0 + (a / 2) * (FL_H + 8);
-    gfx->fillRoundRect(x, y, FL_W, FL_H, 16, fnWho[a] ? FUN_COL[a] : UI_TRACK);
+    gfx->fillRoundRect(x, y, FL_W, FL_H, 16, a == FUN_MINE || fnWho[a] ? FUN_COL[a] : UI_TRACK);
     gfx->drawRoundRect(x, y, FL_W, FL_H, 16, UI_INK);
     drawFunIcon(a, x + 8, y + 8);
     gfx->setTextColor(UI_INK);
     setSize(2);
     setCur(x + 62, y + 12);
     printT(T(FUN_NAME[a]));
+    if (a == FUN_MINE) continue;
     snprintf(t, sizeof(t), T(S_PTS_COST_FMT), (unsigned)FUN_COST[a]);
     gfx->setTextColor(C565(0xb0, 0x60, 0x10));
     setCur(x + 62, y + 38);
@@ -317,6 +312,12 @@ static void funListTap(int16_t x, int16_t y) {
   if (x < FL_X0 || y < FL_Y0 || x > FL_X0 + 2 * FL_W + 8 || y > FL_Y0 + 2 * FL_H + 8) return;
   uint8_t a = (y >= FL_Y0 + FL_H + 4 ? 2 : 0) + (x >= FL_X0 + FL_W + 4 ? 1 : 0);
   fnAct = a;
+  if (a == FUN_MINE) {
+    studyEnter();
+    fnStage = FN_PLAY;
+    sfxPlay(SFX_TAP);
+    return;
+  }
   listCands(a);
   if (petFits(a)) {
     const char *no = pet.questAway() ? T(S_AWAY) : sportsBlocked();
@@ -554,69 +555,6 @@ static void doCast() {
   fsBite = millis() + 2000 + random(4000);
 }
 
-// ---------- mina ----------
-
-#define MN_X (CX + 50)
-#define MN_Y 250
-#define MN_R 64
-static void renderMine() {
-  gfx->fillScreen(RGB565_BLACK);
-  gfx->fillRect(0, 0, 466, 330, C565(0x4a, 0x40, 0x48));
-  gfx->fillRect(0, 330, 466, 136, C565(0x6a, 0x58, 0x48));
-  static const int16_t CR[6][2] = { { 70, 160 }, { 390, 150 }, { 150, 230 }, { 410, 290 }, { 40, 260 }, { 330, 350 } };
-  for (auto &c : CR) {  // cristales en la pared
-    gfx->fillTriangle(c[0], c[1] - 10, c[0] - 5, c[1] + 4, c[0] + 5, c[1] + 4, C565(0x88, 0xd8, 0xf8));
-  }
-  funHeader(T(S_FUN_MINE), UI_WHITE);
-  drawWorker(96, 340);
-  int dx = millis() - mnHitAt < 120 ? 5 : 0;
-  int rx = MN_X + dx;
-  gfx->fillCircle(rx, MN_Y, MN_R, C565(0x90, 0x88, 0x88));
-  gfx->fillCircle(rx - 18, MN_Y - 20, MN_R / 2, C565(0xa8, 0xa0, 0xa0));
-  gfx->drawCircle(rx, MN_Y, MN_R, UI_INK);
-  for (int k = 0; k < mnHits; k++) {  // grietas
-    float a = k * 1.3f + 0.4f;
-    gfx->drawLine(rx, MN_Y, rx + (int)(cosf(a) * MN_R * 0.9f), MN_Y + (int)(sinf(a) * MN_R * 0.9f), UI_INK);
-    gfx->drawLine(rx + 1, MN_Y, rx + 1 + (int)(cosf(a) * MN_R * 0.9f), MN_Y + (int)(sinf(a) * MN_R * 0.9f), UI_INK);
-  }
-  if (!mnRock) {
-    char b[32];
-    costLabel(b, sizeof(b), S_DIG, FUN_MINE);
-    funButton(360, b, UI_BAR_OK);
-  } else {
-    gfx->setTextColor(UI_WHITE);
-    setSize(2);
-    setCur(centerX(T(S_TAP_ROCK), 2), 110);
-    printT(T(S_TAP_ROCK));
-  }
-}
-
-static void mineTap(int16_t x, int16_t y) {
-  if (!mnRock) {
-    if (!inButton(x, y, 360) || !canPay(FUN_COST[FUN_MINE])) return;
-    fnAsk = ASK_DIG;  // primero, confirmar
-    return;
-  }
-  int dx = x - MN_X, dy = y - MN_Y;
-  if (dx * dx + dy * dy > (MN_R + 20) * (MN_R + 20)) return;
-  mnHits++;
-  mnHitAt = millis();
-  sfxPlay(SFX_PLAY);
-  if (mnHits < MN_HITS) return;
-  fnLoot = mineLoot(fuRand(), pet.chessLuck());
-  fnAcc = 0xFF;
-  mnRock = false;
-  mnHits = 0;
-  showLoot(S_LOOT);
-}
-
-static void doDig() {
-  if (!funPay(FUN_COST[FUN_MINE])) return;
-  sfxPlay(SFX_TAP);
-  mnRock = true;
-  mnHits = 0;
-}
-
 // ---------- expedicion ----------
 
 static void questPathPos(float q, int &x, int &y) {  // del campamento a la X
@@ -754,11 +692,11 @@ void renderFun() {
     default:
       if (fnAct == FUN_GARDEN) renderGarden();
       else if (fnAct == FUN_FISH) renderFish();
-      else if (fnAct == FUN_MINE) renderMine();
+      else if (fnAct == FUN_MINE) renderStudy();
       else renderQuest();
   }
   if (fnAsk && fnStage == FN_PLAY) {  // ¿gastar los puntos?
-    static const StrId QUE[5] = { S_PLANT, S_PLANT, S_CAST, S_DIG, S_GO_OUT };
+    static const StrId QUE[] = { S_PLANT, S_PLANT, S_CAST, S_GO_OUT };
     char l2[32];
     snprintf(l2, sizeof(l2), T(S_SPEND_Q_FMT), (unsigned)FUN_COST[fnAct]);
     drawAskBox(T(QUE[fnAsk]), l2);
@@ -774,7 +712,6 @@ void funTap(int16_t x, int16_t y) {
     if (!askTap(x, y) || fnStage != FN_PLAY) return;
     if (a == ASK_PLANT) doPlant(fnAskPlot);
     else if (a == ASK_CAST) doCast();
-    else if (a == ASK_DIG) doDig();
     else doQuest();
     return;
   }
@@ -789,22 +726,24 @@ void funTap(int16_t x, int16_t y) {
     default:
       if (fnAct == FUN_GARDEN) gardenTap(x, y);
       else if (fnAct == FUN_FISH) fishTap(x, y);
-      else if (fnAct == FUN_MINE) mineTap(x, y);
+      else if (fnAct == FUN_MINE) studyTap(x, y);
       else questTap(x, y);
   }
 }
 
-// a la derecha: atras (la lista; desde la lista, a actividades). Pescando o con la piedra a
-// medias no se sale sin querer; en la granja, a la izquierda, la pagina siguiente
+// a la derecha: atras; en la granja, a la izquierda, la pagina siguiente
 void funSwipe(int dir) {
   if (fnAsk) { fnAsk = ASK_NONE; return; }  // deslizar cancela la pregunta
   if (dir <= 0) {
     if (fnStage == FN_PICK && fnCandN > 6) fnPage = (fnPage + 1) % ((fnCandN + 5) / 6);
     return;
   }
-  if (fnStage == FN_PLAY && (fsStage != FS_IDLE || mnRock)) return;
+  if (fnStage == FN_PLAY && fnAct == FUN_MINE && studyCancelPrompt()) return;
+  if (fnStage == FN_PLAY && fnAct == FUN_FISH && fsStage != FS_IDLE) return;
   if (fnStage == FN_LIST || fnPractice) { closeFun(); return; }
   rivalPmd[0].unload();
   fnStage = FN_LIST;
   countWho();
 }
+
+bool studyScreenOpen() { return funOpen && fnStage == FN_PLAY && fnAct == FUN_MINE; }

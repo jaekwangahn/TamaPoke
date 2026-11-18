@@ -44,7 +44,11 @@ static const char *const KEY_PASS[WIFI_SLOTS] = { "pass", "pass2", "pass3" };
 bool wifiHasCreds() {
   for (uint8_t i = 0; i < WIFI_SLOTS; i++)
     if (credGet(KEY_SSID[i]).length()) return true;
+#if defined(WIFI_DEFAULT_SSID) && defined(WIFI_DEFAULT_PASS)
+  return WIFI_DEFAULT_SSID[0] != '\0';
+#else
   return false;
+#endif
 }
 bool mcpConfigured() { return credGet("mcp").length() > 0; }
 
@@ -274,6 +278,13 @@ static bool probarRed(const String &ssid, const String &pass, uint32_t ms) {
 
 static bool conectar() {
   if (WiFi.status() == WL_CONNECTED) return true;
+#if defined(WIFI_DEFAULT_SSID) && defined(WIFI_DEFAULT_PASS)
+  if (WIFI_DEFAULT_SSID[0] && WiFi.mode(WIFI_STA) &&
+      probarRed(WIFI_DEFAULT_SSID, WIFI_DEFAULT_PASS, 15000)) {
+    Serial.printf("wifi: connected to %s (%s)\n", WIFI_DEFAULT_SSID, WiFi.localIP().toString().c_str());
+    return true;
+  }
+#endif
   String ssid[WIFI_SLOTS], pass[WIFI_SLOTS];
   uint8_t guardadas = 0, unica = 0;
   for (uint8_t i = 0; i < WIFI_SLOTS; i++) {
@@ -504,6 +515,7 @@ static void horaRecibida(struct timeval *tv) {
 
 // con la red ya conectada: pide la hora y espera la respuesta (hasta 5 s)
 static void pedirHora() {
+  const uint32_t before = ntpCount;
   sntp_set_time_sync_notification_cb(horaRecibida);
   if (!esp_sntp_enabled()) {
     esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
@@ -513,8 +525,8 @@ static void pedirHora() {
   } else {
     esp_sntp_restart();
   }
-  uint32_t antes = ntpCount, t0 = millis();
-  while (ntpCount == antes && millis() - t0 < 5000) delay(50);
+  const uint32_t started = millis();
+  while (ntpCount == before && millis() - started < 5000) delay(50);
 }
 
 bool netTimeTake(uint32_t &utc) {

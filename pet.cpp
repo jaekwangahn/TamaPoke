@@ -485,10 +485,10 @@ void Pet::checkMedals(uint16_t earned) {
   if (streak >= 7) medals |= MED_STREAK7;
   if (streak >= 30) medals |= MED_STREAK30;
   if (bond >= 100) medals |= MED_BOND;
-  if (DEX_TBL[speciesId].evolvesTo == 0) medals |= MED_FINAL;
+  if (companionEntry(speciesId).evolvesTo == 0) medals |= MED_FINAL;
   if (weight == 0 && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
   if (shiny) medals |= MED_SHINY;
-  if (DEX_TBL[speciesId].rarity == R_LEGENDARIO) medals |= MED_LEGEND;
+  if (companionEntry(speciesId).rarity == R_LEGENDARIO) medals |= MED_LEGEND;
   if (trAtk >= MED_TRAIN_MIN) medals |= MED_STRONG;
   if (trSpe >= MED_TRAIN_MIN) medals |= MED_SWIFT;
   uint16_t gained = medals & ~before;
@@ -512,13 +512,13 @@ static uint16_t calcStat(uint8_t base, uint8_t gene, uint16_t lvl, uint8_t tr) {
 }
 
 uint16_t Pet::atkStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bAtk, geneAtk, level(), trAtk);
+  return isEgg() ? 0 : calcStat(companionEntry(speciesId).bAtk, geneAtk, level(), trAtk);
 }
 uint16_t Pet::defStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bDef, geneDef, level(), trDef);
+  return isEgg() ? 0 : calcStat(companionEntry(speciesId).bDef, geneDef, level(), trDef);
 }
 uint16_t Pet::speStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bSpe, geneSpe, level(), trSpe);
+  return isEgg() ? 0 : calcStat(companionEntry(speciesId).bSpe, geneSpe, level(), trSpe);
 }
 
 uint16_t Pet::registeredCount() const {
@@ -532,7 +532,7 @@ uint16_t Pet::registeredCount() const {
 // despedida la dispara el usuario con el boton (no salta sola, para que la vea)
 bool Pet::canFarewellNow() const {
   return !isEgg() && !sleeping && ceremony == CER_NONE &&
-         DEX_TBL[speciesId].evolvesTo == 0 && ageMinutes >= FAREWELL_AGE_MIN;
+         companionEntry(speciesId).evolvesTo == 0 && ageMinutes >= FAREWELL_AGE_MIN;
 }
 
 // abandono total durante 1h: lista para escaparse. La dispara el usuario con el
@@ -543,7 +543,7 @@ bool Pet::canRunawayNow() const {
 
 int8_t Pet::weatherFeel() const {
   if (isEgg() || weather == PW_NONE) return 0;
-  uint8_t b = DEX_TBL[speciesId].biome;  // 1 playa (agua), 2 bosque, 3 volcan, 5 nieve
+  uint8_t b = companionEntry(speciesId).biome;  // 1 playa (agua), 2 bosque, 3 volcan, 5 nieve
   if (weather == PW_RAIN) return b == 1 ? 1 : b == 3 ? -1 : 0;
   if (weather == PW_SNOW) return b == 5 ? 1 : -1;
   if (weather == PW_SUN) return b == 2 ? 1 : 0;
@@ -885,7 +885,7 @@ void Pet::hatch() {
 // usuario tocando al bicho (evolve()), para que vea la transformacion.
 bool Pet::canEvolveNow() const {
   if (isEgg() || sleeping || ceremony != CER_NONE) return false;
-  const DexEntry &d = DEX_TBL[speciesId];
+  const DexEntry &d = companionEntry(speciesId);
   if (d.evolvesTo == 0) return false;
   int16_t libres[MAX_EVO_TARGETS];
   if (freeTargets(*this, speciesId, libres) == 0) return false;  // ya estan en la granja
@@ -899,7 +899,7 @@ uint32_t Pet::evoAgeNeeded() const {
 
 bool Pet::useEvoPotion() {
   if (bag[ITEM_POTION_EVO] == 0 || isEgg() || ceremony != CER_NONE || evoBoost) return false;
-  if (DEX_TBL[speciesId].evolvesTo == 0 || ageMinutes >= evoAgeNeeded()) return false;
+  if (companionEntry(speciesId).evolvesTo == 0 || ageMinutes >= evoAgeNeeded()) return false;
   int16_t libres[MAX_EVO_TARGETS];
   if (freeTargets(*this, speciesId, libres) == 0) return false;
   bag[ITEM_POTION_EVO]--;
@@ -1055,9 +1055,18 @@ void Pet::funDone() {
 }
 
 bool Pet::buy(uint8_t item) {
-  if (item >= SHOP_ITEMS || points < ITEM_PRICE[item] || bag[item] >= 999) return false;
+  if (item >= ITEM_COUNT || !ITEM_PRICE[item] || points < ITEM_PRICE[item] || bag[item] >= 999) return false;
   points -= ITEM_PRICE[item];
   bag[item]++;
+  save();
+  return true;
+}
+
+bool Pet::useLevelPotion() {
+  if (vacant || isEgg() || ceremony != CER_NONE || questAway() || level() >= 999 ||
+      !bag[ITEM_POTION_LEVEL]) return false;
+  --bag[ITEM_POTION_LEVEL];
+  ageMinutes += MINUTES_PER_LEVEL;
   save();
   return true;
 }
@@ -1303,7 +1312,8 @@ void Pet::save() {
   prefs.putBool("memb", fromFarm);
   prefs.putBool("vac", vacant);
   prefs.putInt("pts", points);
-  prefs.putBytes("bag", bag, sizeof(bag));
+  prefs.putBytes("bag", bag, sizeof(uint16_t) * ITEM_POTION_LEVEL);
+  prefs.putUShort("lvlPotion", bag[ITEM_POTION_LEVEL]);
   prefs.putUShort("rgdone", regionDone);
   prefs.putUShort("rgegg", regionEggs);
   prefs.putUInt("born", bornEpoch);
@@ -1382,7 +1392,8 @@ void Pet::load() {
   fromFarm = prefs.getBool("memb", false);
   vacant = prefs.getBool("vac", false);
   points = prefs.getInt("pts", START_POINTS);  // partida anterior a la tienda: START_POINTS
-  prefs.getBytes("bag", bag, sizeof(bag));
+  prefs.getBytes("bag", bag, sizeof(uint16_t) * ITEM_POTION_LEVEL);
+  bag[ITEM_POTION_LEVEL] = prefs.getUShort("lvlPotion", 0);
   regionDone = prefs.getUShort("rgdone", 0);
   regionEggs = prefs.getUShort("rgegg", 0);
   bornEpoch = prefs.getUInt("born", 0);

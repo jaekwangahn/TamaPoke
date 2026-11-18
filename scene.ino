@@ -843,9 +843,29 @@ int regionOf(int16_t dex) {
   return -1;
 }
 
+// The campus art is half the panel resolution. Expand directly into the canvas.
+void drawDeepgongCampus(bool night) {
+  static_assert(LCD_WIDTH == DEEPGONG_CAMPUS_SIZE * 2 && LCD_HEIGHT == LCD_WIDTH);
+  uint16_t *row = gfx->getFramebuffer();
+  const uint16_t *source = DEEPGONG_CAMPUS;
+  for (int y = 0; y < DEEPGONG_CAMPUS_SIZE; ++y) {
+    for (int x = 0; x < LCD_WIDTH; x += 2) {
+      uint16_t color = *source++;
+      if (night) color = (color & 0xF7DE) >> 1;
+      row[x] = row[x + 1] = color;
+    }
+    memcpy(row + LCD_WIDTH, row, LCD_WIDTH * sizeof(*row));
+    row += 2 * LCD_WIDTH;
+  }
+}
+
 // fondo de la pantalla principal: el paisaje de la region del compañero (SD);
 // el huevo, o si falta la SD o el fichero, el escenario dibujado por bioma
 void drawBackground() {
+  if (!pet.vacant && pet.speciesId == DEEPGONG_ID) {
+    drawDeepgongCampus(gNight);
+    return;
+  }
   int r = pet.isEgg() ? -1 : regionOf(pet.speciesId);
   if (r >= 0 && bg.load(r, gNight ? BG_NIGHT : gPhase == PH_TWILIGHT ? BG_TWILIGHT : BG_DAY)) {
     gfx->draw16bitRGBBitmap(0, 0, bg.px, bg.w, bg.h);
@@ -853,7 +873,7 @@ void drawBackground() {
     if (gNight) drawNightSky(millis());
     return;
   }
-  drawScene(pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome, millis(), gNight);
+  drawScene(pet.isEgg() ? 0 : companionEntry(pet.speciesId).biome, millis(), gNight);
 }
 
 void drawScene(uint8_t biome, uint32_t now, bool night) {

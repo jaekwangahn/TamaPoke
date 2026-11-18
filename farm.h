@@ -15,7 +15,10 @@ struct FarmEntry {
   char nick[12];
 };
 // nivel de hoy (a la hora local `now`): en la granja tambien sube, mas despacio
-static inline uint16_t farmLevel(const FarmEntry &e, uint32_t now) { return levelOfAge(farmAge(e.ageMinutes, e.farmEpoch, now)); }
+static inline uint16_t farmLevel(const FarmEntry &e, const Pet &p) {
+  const uint16_t bonus = e.speciesId == DEEPGONG_ID ? p.deepgongStudyLevels : 0;
+  return levelOfAge(farmAge(e.ageMinutes, e.farmEpoch, p.lastSeenEpoch), bonus);
+}
 
 bool farmLoad(Pet &p);                 // lee el indice de la SD y rellena p.farmReg
 bool farmReady();                      // hay SD (y por tanto granja)
@@ -24,3 +27,5 @@ const FarmEntry &farmAt(int i);        // ordenada por especie
 bool farmPut(Pet &p, const PetRec &r); // guarda (o reemplaza) y lo marca en p.farmReg
 bool farmTake(Pet &p, int16_t dex, PetRec &out);  // lo lee, lo borra y lo desmarca
 bool farmPeek(int16_t dex, PetRec &out);          // solo lo lee (los gimnasios: genes y entrenamiento)
+
+bool farmAddDeepgong(Pet &pet, uint32_t now);

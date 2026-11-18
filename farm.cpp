@@ -26,7 +26,7 @@ static bool readRec(const char *path, PetRec &r) {
   size_t n = f.size();
   uint8_t ver = n == sizeof(PetRec) ? PET_REC_VER : n == PET_REC_V3_SIZE ? 3 : n == PET_REC_V2_SIZE ? 2
               : n == PET_REC_V1_SIZE ? 1 : 0;
-  bool ok = ver && f.read((uint8_t *)&r, n) == n && r.ver == ver && r.speciesId >= 1 && r.speciesId <= PET_DEX_MAX;
+  bool ok = ver && f.read((uint8_t *)&r, n) == n && r.ver == ver && validCompanion(r.speciesId);
   f.close();
   return ok;
 }
@@ -59,7 +59,7 @@ static void indexPut(const FarmEntry &e) {
     entries[i] = e;
     return;
   }
-  if (count >= PET_DEX_MAX) return;
+  if (count >= PET_DEX_MAX + 1) return;
   memmove(&entries[i + 1], &entries[i], (count - i) * sizeof(FarmEntry));
   entries[i] = e;
   count++;
@@ -80,7 +80,7 @@ bool farmLoad(Pet &p) {
   count = 0;
   memset(p.farmReg, 0, sizeof(p.farmReg));
   if (!sdReady) return false;
-  if (!entries) entries = (FarmEntry *)ps_malloc(PET_DEX_MAX * sizeof(FarmEntry));
+  if (!entries) entries = (FarmEntry *)ps_malloc((PET_DEX_MAX + 1) * sizeof(FarmEntry));
   if (!entries) return false;
   SD_MMC.mkdir("/farm");
   File dir = SD_MMC.open("/farm");
@@ -109,7 +109,7 @@ int farmCount() { return count; }
 const FarmEntry &farmAt(int i) { return entries[i]; }
 
 bool farmPut(Pet &p, const PetRec &r) {
-  if (!sdReady || r.speciesId < 1 || r.speciesId > PET_DEX_MAX) return false;
+  if (!sdReady || !validCompanion(r.speciesId)) return false;
   char path[32];
   farmPath(path, sizeof(path), r.speciesId);
   if (!writeRec(path, r)) {
@@ -122,14 +122,14 @@ bool farmPut(Pet &p, const PetRec &r) {
 }
 
 bool farmPeek(int16_t dex, PetRec &out) {
-  if (!sdReady || dex < 1 || dex > PET_DEX_MAX) return false;
+  if (!sdReady || !validCompanion(dex)) return false;
   char path[32];
   farmPath(path, sizeof(path), dex);
   return readRec(path, out);
 }
 
 bool farmTake(Pet &p, int16_t dex, PetRec &out) {
-  if (!sdReady || dex < 1 || dex > PET_DEX_MAX) return false;
+  if (!sdReady || !validCompanion(dex)) return false;
   char path[32];
   farmPath(path, sizeof(path), dex);
   if (!readRec(path, out)) return false;
@@ -137,4 +137,23 @@ bool farmTake(Pet &p, int16_t dex, PetRec &out) {
   indexDel(dex);
   setBit(p, dex, false);
   return true;
+}
+
+bool farmAddDeepgong(Pet &pet, uint32_t now) {
+  if (!farmReady() || !entries) return false;
+  Preferences prefs;
+  if (!prefs.begin("tamapoke", false)) return false;
+  if (prefs.getBool("deepgongAdded", false)) return true;
+
+  if (pet.speciesId != DEEPGONG_ID && !pet.inFarm(DEEPGONG_ID)) {
+    PetRec record{};
+    record.ver = PET_REC_VER;
+    record.speciesId = DEEPGONG_ID;
+    record.fullness = record.joy = record.energy = record.hygiene = 85;
+    record.geneAtk = record.geneDef = record.geneSpe = 15;
+    record.nature = NAT_EASY;
+    record.bornEpoch = record.farmEpoch = now;
+    if (!farmPut(pet, record)) return false;
+  }
+  return prefs.putBool("deepgongAdded", true) != 0;
 }

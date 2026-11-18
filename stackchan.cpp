@@ -41,7 +41,9 @@ static const uint8_t INFO_ACT[3] = { MCP_CHESS, MCP_POKEDEX, MCP_FARM };
 static const char *const BUY_ID[4] = { "candy", "medicine", "strength_potion", "speed_potion" };
 static const uint8_t BUY_ITEM[4] = { ITEM_CANDY, ITEM_MEDICINE, ITEM_POTION_STR, ITEM_POTION_SPD };
 static const char *const ITEM_ZH[ITEM_COUNT] = { "糖果", "药", "体力药剂", "活力药剂", "异色护符",
-                                                 "普通蛋", "稀有蛋", "传说蛋", "进化药水" };
+                                                 "普通蛋", "稀有蛋", "传说蛋", "进化药水", "Mega石",
+                                                 "体力果", "抵抗果", "活力果", "金果", "鱼", "珍珠",
+                                                 "Mega石碎片", "水属性蛋", "化石蛋", "升级药水" };
 static const char *const NAT_ZH[NAT_COUNT] = { "乖巧", "贪吃", "爱玩", "爱干净", "懒洋洋" };
 static const char *const REGION_ZH[REGION_COUNT] = { "关都", "城都", "丰缘", "神奥", "合众",
                                                      "卡洛斯", "阿罗拉", "伽勒尔", "帕底亚" };

@@ -143,7 +143,7 @@ static const float EV_W[EV_COUNT][4] = {
 
 // capacidad para una prueba (un buen atleta ronda 100)
 static inline float athleteRating(const Athlete &a, uint8_t ev) {
-  const DexEntry &d = DEX_TBL[(a.dex >= 1 && a.dex <= DEX_COUNT) ? a.dex : 0];
+  const DexEntry &d = companionEntry(a.dex);
   const float *w = EV_W[ev < EV_COUNT ? ev : 0];
   float base = w[0] * d.bHp + w[1] * d.bAtk * a.geneAtk / 100.0f + w[2] * d.bDef * a.geneDef / 100.0f +
                w[3] * d.bSpe * a.geneSpe / 100.0f;

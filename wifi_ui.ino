@@ -67,7 +67,7 @@ void stackchanService() {
     for (int i = 0; i < farmCount() && i < 25 && n < sizeof(granja) - 60; i++) {
       const FarmEntry &e = farmAt(i);
       n += snprintf(granja + n, sizeof(granja) - n, "%s%s%s Lv.%u", i ? ", " : "", e.shiny ? "*" : "",
-                    e.nick[0] ? e.nick : dexName(e.speciesId), farmLevel(e, pet.lastSeenEpoch));
+                    e.nick[0] ? e.nick : dexName(e.speciesId), farmLevel(e, pet));
     }
     if (farmCount() > 25) snprintf(granja + n, sizeof(granja) - n, " (+%d)", farmCount() - 25);
     ctx.farmList = granja;
